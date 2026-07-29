@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "scene:survey": "node scripts/glb-bake.mjs survey",
+    "scene:fit": "node scripts/glb-bake.mjs fit",
+    "scene:bake": "node scripts/glb-bake.mjs bake",
+    "scene:mesh": "node scripts/glb-mesh.mjs"
   },
   "dependencies": {
     "@vercel/blob": "^2.6.1",
@@ -17,6 +21,9 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2",
+    "@gltf-transform/functions": "^4.4.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -24,6 +31,10 @@
     "@types/three": "^0.185.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
+    "jpeg-js": "^0.4.4",
+    "meshoptimizer": "^1.2.0",
+    "pngjs": "^7.0.0",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

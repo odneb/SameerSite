@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useScene } from "@/components/scene/scene-context";
 import { ScriptBody } from "@/components/site/script-body";
 import type { Section, SiteContent } from "@/lib/content/schema";
+import { useHydrated } from "@/lib/hydrated";
 
 export function SiteShell({ content }: { content: SiteContent }) {
   const scene = useScene();
@@ -14,11 +15,13 @@ export function SiteShell({ content }: { content: SiteContent }) {
   /** Kept alive through the closing transition so the panel doesn't blink. */
   const [rendered, setRendered] = useState<Section | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const hydrated = useHydrated();
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const active = activeId ? (sections.find((s) => s.id === activeId) ?? null) : null;
-  const rise = mounted ? "rise" : "";
+  // Held back until hydration so the server's markup and the client's first
+  // render agree on the animation state.
+  const rise = hydrated ? "rise" : "";
 
   const open = useCallback(
     (id: string) => {
@@ -50,10 +53,6 @@ export function SiteShell({ content }: { content: SiteContent }) {
     },
     [activeId, close, open, sections],
   );
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -119,7 +118,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
           onClick={() => setMenuOpen((value) => !value)}
           aria-expanded={menuOpen}
           className={`pointer-events-auto ${rise} group text-ink-dim hover:text-ink flex items-center gap-3 text-[0.6rem] tracking-[0.34em] transition-colors duration-500`}
-          style={mounted ? { animationDelay: "120ms" } : undefined}
+          style={hydrated ? { animationDelay: "120ms" } : undefined}
         >
           {menuOpen ? "close" : "menu"}
           <span aria-hidden className="flex w-6 flex-col gap-[4px]">
@@ -136,7 +135,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
           {sections.map((section, index) => {
             const isActive = section.id === activeId;
             return (
-              <li key={section.id} className={rise} style={mounted ? { animationDelay: `${240 + index * 90}ms` } : undefined}>
+              <li key={section.id} className={rise} style={hydrated ? { animationDelay: `${240 + index * 90}ms` } : undefined}>
                 <button
                   type="button"
                   onClick={() => (isActive ? close() : open(section.id))}
@@ -175,7 +174,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
           transition: "opacity 700ms ease, transform 700ms cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        <div className={rise} style={mounted ? { animationDelay: "520ms" } : undefined}>
+        <div className={rise} style={hydrated ? { animationDelay: "520ms" } : undefined}>
           {content.hero.quote.split("\n").map((line, index) => (
             <p key={index} className="text-ink text-[0.82rem] leading-[1.75] tracking-[0.06em]">
               {line}
@@ -223,7 +222,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
 
             <div
               className={`scroll-quiet ${rise} max-h-[62vh] overflow-y-auto pr-5`}
-              style={mounted ? { animationDelay: "120ms" } : undefined}
+              style={hydrated ? { animationDelay: "120ms" } : undefined}
             >
               <ScriptBody text={rendered.script} />
             </div>

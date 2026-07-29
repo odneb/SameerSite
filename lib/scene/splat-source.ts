@@ -20,6 +20,7 @@ import {
   WORLD,
   type DepthRegion,
 } from "./config";
+import { roomDepthToWorldZ, type RoomDepth } from "./room";
 
 export type SplatBuffers = {
   count: number;
@@ -178,10 +179,59 @@ function srgbToLinear(channel: number) {
 export type PlateBuildOptions = {
   /** Splat budget. The builder gets within a few percent of this. */
   targetCount: number;
-  /** Optional grayscale depth plate; white is near. Supersedes DEPTH_REGIONS. */
+  /** Optional depth plate; see readDepthPlate for the two accepted layouts. */
   depthData?: ImageData | null;
+  /**
+   * Where the room capture's surfaces sit, as fractions of the lens distance.
+   * With this, a covered pixel is placed on the geometry itself. Without it the
+   * plate is read as authored-space grayscale, which is what an external depth
+   * pass dropped in via NEXT_PUBLIC_DEPTH_URL will be.
+   */
+  roomDepth?: RoomDepth | null;
   seed?: number;
 };
+
+type DepthPlate = {
+  width: number;
+  height: number;
+  /** 1 = nearest surface, 0 = furthest. Normalised to the plate's own extent. */
+  depth: Float32Array;
+  /** How much to trust `depth` at this pixel vs. the authored regions. */
+  coverage: Float32Array;
+};
+
+/**
+ * Split a depth plate into depth and confidence.
+ *
+ * The pass we bake from the room mesh carries depth in red and coverage in
+ * green, with blue pinned to zero — the mesh holds only the two figures and the
+ * bed, so the wall, the lamp and the blinded window have no geometry there and
+ * have to keep their authored depth. Any other grayscale image is taken as
+ * trusted everywhere.
+ */
+function readDepthPlate(image: ImageData): DepthPlate {
+  const { width, height, data } = image;
+  const pixels = width * height;
+
+  let hasBlue = false;
+  const stride = Math.max(1, Math.floor(pixels / 4096));
+  for (let i = 0; i < pixels; i += stride) {
+    if (data[i * 4 + 2] > 4) {
+      hasBlue = true;
+      break;
+    }
+  }
+
+  const depth = new Float32Array(pixels);
+  const coverage = new Float32Array(pixels);
+
+  for (let i = 0; i < pixels; i++) {
+    depth[i] = data[i * 4] / 255;
+    coverage[i] = hasBlue ? 1 : data[i * 4 + 1] / 255;
+  }
+
+  return { width, height, depth, coverage };
+}
 
 /**
  * Turn a photographic plate into a splat field.
@@ -201,6 +251,8 @@ export function buildFromPlate(
   const worldWidth = WORLD.width;
   const worldHeight = worldWidth * (imgH / imgW);
   const worldDepth = WORLD.depth;
+  const worldCenter = WORLD.center;
+  const roomDepth = options.roomDepth ?? null;
 
   /**
    * The distance the lens that took this photograph would have been at. Splats
@@ -237,7 +289,7 @@ export function buildFromPlate(
   const seed = new Float32Array(capacity * 3);
   const luma = new Float32Array(capacity);
 
-  const depthPlate = options.depthData;
+  const depthPlate = options.depthData ? readDepthPlate(options.depthData) : null;
   let count = 0;
 
   for (let y = 0; y < imgH; y++) {
@@ -255,20 +307,34 @@ export function buildFromPlate(
         const u = (x + random()) / imgW;
         const v = (y + random()) / imgH;
 
-        let depth: number;
+        // Authored depth is a layer index; the mesh gives a real position. They
+        // are blended in world space rather than in depth space, because the two
+        // are on different scales and only metres are comparable.
+        let z = (depthAt(u, v) - 0.5) * worldDepth + worldCenter;
+        let measured = 0;
         if (depthPlate) {
           const dx = Math.min(depthPlate.width - 1, (u * depthPlate.width) | 0);
           const dy = Math.min(depthPlate.height - 1, (v * depthPlate.height) | 0);
-          depth = depthPlate.data[(dy * depthPlate.width + dx) * 4] / 255;
-        } else {
-          depth = depthAt(u, v);
+          const index = dy * depthPlate.width + dx;
+          measured = depthPlate.coverage[index];
+          if (measured > 0) {
+            const sample = depthPlate.depth[index];
+            const zMeasured = roomDepth
+              ? roomDepthToWorldZ(sample, roomDepth, lensDistance)
+              : (sample - 0.5) * worldDepth + worldCenter;
+            z += (zMeasured - z) * measured;
+          }
         }
 
-        const relief =
-          (pixelLuma - 0.5) * SAMPLING.reliefFromLuma * 0.1 +
-          (valueNoise(u * 7.3, v * 7.3) - 0.5) * SAMPLING.reliefNoise * 0.1;
+        // Where real geometry drives the depth it already carries the surface
+        // relief, so the luminance-and-noise stand-in is faded out to avoid
+        // roughening a shape that is already correct.
+        const invented = 1 - measured * 0.8;
+        z +=
+          ((pixelLuma - 0.5) * SAMPLING.reliefFromLuma * 0.1 +
+            (valueNoise(u * 7.3, v * 7.3) - 0.5) * SAMPLING.reliefNoise * 0.1) *
+          invented;
 
-        const z = (depth - 0.5) * worldDepth + relief;
         // Foreshorten by depth so every layer projects back onto the plate.
         const perspective = (lensDistance - z) / lensDistance;
 
@@ -319,7 +385,7 @@ export function buildFromPlate(
     count,
     capacity,
     Math.floor(options.targetCount * POINTS.dustRatio),
-    { worldWidth, worldHeight, worldDepth, lensDistance },
+    { worldWidth, worldHeight, worldDepth, worldCenter, lensDistance },
     random,
   );
 
@@ -363,6 +429,7 @@ function addDust(
     worldWidth: number;
     worldHeight: number;
     worldDepth: number;
+    worldCenter: number;
     lensDistance: number;
   },
   random: () => number,
@@ -373,7 +440,8 @@ function addDust(
     // Biased toward the centre of frame and the front half of the volume.
     const u = 0.5 + (random() - 0.5) * 1.15;
     const v = 0.5 + (random() - 0.5) * 1.1;
-    const z = (Math.pow(random(), 0.7) - 0.35) * world.worldDepth;
+    const z =
+      world.worldCenter + (Math.pow(random(), 0.7) - 0.35) * world.worldDepth;
     const perspective = (world.lensDistance - z) / world.lensDistance;
 
     buffers.position[p3] = (u - 0.5) * world.worldWidth * perspective;

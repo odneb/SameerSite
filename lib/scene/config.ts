@@ -10,8 +10,76 @@ export const WORLD = {
   width: 12,
   /** Derived from the plate aspect at build time; this is the 16:9 default. */
   height: 12 * (9 / 16),
-  /** How far the cloud extends front-to-back. The whole illusion lives here. */
-  depth: 3.6,
+  /**
+   * Front-to-back extent of the *authored* layers — the wall, the window, the
+   * lamp. Anything the room mesh covers ignores this and takes its position
+   * from the geometry instead, so this only has to hold what the mesh doesn't.
+   *
+   * It is deep because the room is deep: the capture is very nearly as deep as
+   * it is wide. An earlier, shallower volume made the depth cheap to light but
+   * turned every layer into a sliding card the moment the camera moved.
+   */
+  depth: 10.2,
+  /**
+   * Where the middle of that range sits. The mesh pushes the interesting depth
+   * forward of the origin, so the authored range is biased back to sit behind
+   * it rather than straddling it.
+   */
+  center: -1.9,
+} as const;
+
+/**
+ * The room capture, and the lens it was solved under.
+ *
+ * `scripts/glb-bake.mjs` fits a camera to the plate's composition and writes
+ * both the depth pass and `room-transform.json`. The runtime reads that file to
+ * place the mesh; the numbers here are only the things the build-time splat
+ * sampler needs before the fetch resolves, expressed as ratios of the bake
+ * camera's own distance so they survive any change of scale.
+ *
+ * Because a uniform scale about the lens leaves a projection untouched, the
+ * mesh can be scaled into the site's world without moving a single pixel of the
+ * composition — which is what lets the splats and the geometry occupy one space.
+ */
+export const ROOM = {
+  url: "/scene/room.glb",
+  transformUrl: "/scene/room-transform.json",
+  /**
+   * Dimmed hard. The mesh is here for mass, occlusion and parallax, not for
+   * brightness — at anything like full range it stops being the room the cloud
+   * is a surface of and starts being a render with dust on top.
+   */
+  brightness: 0.3,
+  /** Pulls the mesh toward the plate's palette so it never reads as raw CG. */
+  saturation: 0.5,
+  /** Sepia, like everything else here. */
+  tint: [1.14, 0.9, 0.62] as [number, number, number],
+  /**
+   * Highlight compression, and the main lever on the bedding.
+   *
+   * Set high the curve flattens the top of the mesh's range almost completely,
+   * which costs the sheets far more than it costs the shadows — so the dark mass
+   * behind the figures survives while the one pale surface in the capture stops
+   * competing with the cloud for the eye.
+   */
+  highlight: 6.0,
+  /**
+   * Left bright on purpose. Crushed this far down the mesh is mostly silhouette,
+   * and the grazing light along its edges is the whole of what you actually see
+   * of it — the thing that moves when the camera does.
+   */
+  rimStrength: 1.15,
+  rimPower: 2.4,
+  /** Surface break-up, so the mesh is not the only smooth thing in frame. */
+  grainAmount: 0.4,
+  grainScale: 5.5,
+  /** Wrap term on the practicals, so unlit faces fall off rather than clip. */
+  lightWrap: 0.34,
+  /** Slow brightness breathing, so the surface is never quite inert. */
+  breathAmount: 0.06,
+  breathSpeed: 0.09,
+  /** Skipped below this tier — a phone should not pay for a backdrop. */
+  minTier: "tablet",
 } as const;
 
 export const CAMERA = {
@@ -84,23 +152,52 @@ export const MOTION = {
   glintStrength: 0.6,
 } as const;
 
+/**
+ * Pointer wake.
+ *
+ * Nothing here pushes away from the cursor. An impulse carries the direction the
+ * pointer was travelling, and everything built from it preserves volume: a drag
+ * along that stroke, a roll around it, and a share of a divergence-free chaotic
+ * field. The result is a stirred fluid rather than a crowd parting.
+ */
 export const TURBULENCE = {
   /** Ring buffer size. Must match IMPULSE_COUNT in the shader. */
   slots: 14,
   /** Seconds until an impulse is fully spent. Long, on purpose. */
-  life: 5.4,
+  life: 7.2,
   /** Exponential decay constant. Higher = slower recovery. */
-  tau: 1.75,
+  tau: 2.5,
+  /** Seconds for an impulse to reach full strength. Slow enough to feel viscous. */
+  attack: 0.34,
   /** World-space reach of a single impulse. */
-  radiusMin: 0.55,
-  radiusMax: 1.85,
+  radiusMin: 0.85,
+  radiusMax: 2.6,
   /** Displacement scale. */
-  strengthMin: 0.1,
-  strengthMax: 0.42,
+  strengthMin: 0.07,
+  strengthMax: 0.3,
   /** Pointer must travel this far (world units) before a new impulse spawns. */
-  spawnDistance: 0.12,
-  /** Fraction of the impulse that swirls rather than pushes outward. */
-  swirl: 0.62,
+  spawnDistance: 0.14,
+  /**
+   * Balance between the two gesture terms: 0 is pure drag along the stroke, 1 is
+   * pure roll around it. Weighted toward the roll so the cloud curls into eddies
+   * instead of sliding.
+   */
+  roll: 0.74,
+  /**
+   * How much of the displacement is handed to the ambient turbulent field rather
+   * than to the gesture. This is the difference between a cursor that shoves the
+   * cloud and one that disturbs the air it is suspended in — most of the way
+   * across, because the gesture only needs to be legible, not literal.
+   */
+  chaos: 0.68,
+  /** Spatial frequency of that field, in radians per world unit. */
+  scale: 0.62,
+  /**
+   * Asymptote, in world units, for the summed displacement of all live impulses.
+   * A pointer held still keeps spawning into the same spot, so without this the
+   * ring buffer can stack fourteen deep and throw the cloud out of frame.
+   */
+  limit: 1.2,
 } as const;
 
 /**

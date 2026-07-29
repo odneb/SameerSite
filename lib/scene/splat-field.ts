@@ -14,13 +14,20 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 
-import { CAMERA, LIGHTS, MOTION, POINTS, RENDER, TURBULENCE } from "./config";
+import { CAMERA, LIGHTS, MOTION, POINTS, RENDER, ROOM, TURBULENCE } from "./config";
 import {
   IMPULSE_COUNT,
   gradeShader,
   splatFragmentShader,
   splatVertexShader,
 } from "./shaders";
+import {
+  loadRoom,
+  loadRoomTransform,
+  roomDepthRatios,
+  type Room,
+  type RoomTransform,
+} from "./room";
 import {
   buildFromPlate,
   loadImageData,
@@ -34,12 +41,16 @@ export type SplatFieldOptions = {
   depthUrl?: string | null;
   /** Optional real gaussian-splat capture; supersedes the plate entirely. */
   splatUrl?: string | null;
+  /** Optional room mesh rendered behind the cloud. */
+  roomUrl?: string | null;
   reducedMotion?: boolean;
   onReady?: () => void;
   onProgress?: (fraction: number) => void;
 };
 
 type DeviceTier = "mobile" | "tablet" | "desktop";
+
+const TIER_RANK: Record<DeviceTier, number> = { mobile: 0, tablet: 1, desktop: 2 };
 
 function detectTier(): DeviceTier {
   if (typeof window === "undefined") return "desktop";
@@ -65,6 +76,8 @@ export class SplatField {
   private points: THREE.Points | null = null;
   private material: THREE.ShaderMaterial | null = null;
   private uniforms: Record<string, THREE.IUniform> = {};
+  private room: Room | null = null;
+  private roomTransform: RoomTransform | null = null;
 
   private timer = new THREE.Timer();
   private frame = 0;
@@ -85,7 +98,12 @@ export class SplatField {
   private lastPointerTime = 0;
   private impulseCursor = 0;
   private raycaster = new THREE.Raycaster();
-  private interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.9);
+  /**
+   * The depth the pointer acts at. Sits just in front of the foreground figure,
+   * where the geometry puts him — impulses spawned much further back stir mostly
+   * empty air and the gesture goes unanswered.
+   */
+  private interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -2.2);
 
   private frameTimes: number[] = [];
   private downscaled = false;
@@ -130,9 +148,47 @@ export class SplatField {
 
     this.cachedBounds = { width: buffers.bounds.width, height: buffers.bounds.height };
     this.buildPoints(buffers);
+    await this.buildRoom(buffers.bounds.height);
+    if (this.disposed) return;
+
     this.buildComposer();
     this.resize();
     this.options.onReady?.();
+  }
+
+  /**
+   * The lens the plate was taken through, in world units.
+   *
+   * Splats are unprojected about this point and the room mesh is scaled about it,
+   * which is the entire reason the two share a space. It is not the same as
+   * `baseDistance`: that one moves with the viewport so the frame always covers.
+   */
+  private lensDistance(worldHeight: number) {
+    return worldHeight / 2 / Math.tan((CAMERA.fov * Math.PI) / 360);
+  }
+
+  private async buildRoom(worldHeight: number) {
+    const { roomUrl } = this.options;
+    if (!roomUrl || !this.roomTransform) return;
+    if (TIER_RANK[this.tier] < TIER_RANK[ROOM.minTier]) return;
+
+    try {
+      const room = await loadRoom({
+        url: roomUrl,
+        transform: this.roomTransform,
+        lensDistance: this.lensDistance(worldHeight),
+        uniforms: this.uniforms,
+        maxAnisotropy: this.renderer.capabilities.getMaxAnisotropy(),
+      });
+      if (this.disposed) {
+        room.dispose();
+        return;
+      }
+      this.room = room;
+      this.scene.add(room.object);
+    } catch {
+      // A missing or broken backdrop is not worth losing the cloud over.
+    }
   }
 
   private async loadBuffers(): Promise<SplatBuffers> {
@@ -162,6 +218,16 @@ export class SplatField {
       }
     }
 
+    // The same solve places the mesh and positions the splats it covers, so it
+    // has to be in hand before the field is built.
+    if (this.options.roomUrl) {
+      try {
+        this.roomTransform = await loadRoomTransform(ROOM.transformUrl);
+      } catch {
+        this.roomTransform = null;
+      }
+    }
+
     const targetCount =
       this.tier === "mobile"
         ? POINTS.countMobile
@@ -170,7 +236,11 @@ export class SplatField {
           : POINTS.countDesktop;
 
     onProgress?.(0.7);
-    const buffers = buildFromPlate(plate, { targetCount, depthData });
+    const buffers = buildFromPlate(plate, {
+      targetCount,
+      depthData,
+      roomDepth: this.roomTransform ? roomDepthRatios(this.roomTransform) : null,
+    });
     onProgress?.(0.95);
     return buffers;
   }
@@ -231,7 +301,11 @@ export class SplatField {
       },
       uTurbLife: { value: TURBULENCE.life },
       uTurbTau: { value: TURBULENCE.tau },
-      uTurbSwirl: { value: TURBULENCE.swirl },
+      uTurbAttack: { value: TURBULENCE.attack },
+      uTurbRoll: { value: TURBULENCE.roll },
+      uTurbChaos: { value: TURBULENCE.chaos },
+      uTurbScale: { value: TURBULENCE.scale },
+      uTurbLimit: { value: TURBULENCE.limit },
       uFalloff: { value: 3.2 },
       uGlow: { value: 0.16 },
     };
@@ -257,6 +331,7 @@ export class SplatField {
     // Positions are displaced in the vertex shader, so CPU-side culling would
     // pop the cloud out of view at the edges.
     this.points.frustumCulled = false;
+    this.points.renderOrder = 1;
     this.scene.add(this.points);
   }
 
@@ -413,12 +488,19 @@ export class SplatField {
     const speed = Math.min(travelled / dt, 24);
     const intensity = Math.min(1, speed / 9);
 
-    this.spawnImpulse(this.pointerWorld, intensity, now);
+    // The direction of travel is what the wake is built from, so it has to be
+    // measured before the anchor moves.
+    const stroke = Math.atan2(
+      this.pointerWorld.y - this.lastImpulseAt.y,
+      this.pointerWorld.x - this.lastImpulseAt.x,
+    );
+
+    this.spawnImpulse(this.pointerWorld, intensity, now, stroke);
     this.lastImpulseAt.copy(this.pointerWorld);
     this.lastPointerTime = now;
   }
 
-  private spawnImpulse(at: THREE.Vector3, intensity: number, now: number) {
+  private spawnImpulse(at: THREE.Vector3, intensity: number, now: number, stroke: number) {
     const positions = this.uniforms.uImpulsePos?.value as THREE.Vector3[] | undefined;
     const data = this.uniforms.uImpulseData?.value as THREE.Vector4[] | undefined;
     if (!positions || !data) return;
@@ -433,16 +515,19 @@ export class SplatField {
         (TURBULENCE.strengthMax - TURBULENCE.strengthMin) * intensity,
       TURBULENCE.radiusMin +
         (TURBULENCE.radiusMax - TURBULENCE.radiusMin) * intensity,
-      0,
+      stroke,
     );
   }
 
   /** A deliberate disturbance, e.g. a click or a nav interaction. */
   pulse(strengthScale = 1) {
+    // No stroke to inherit, so give it an arbitrary one; the roll term makes it
+    // read as a ripple opening out of the point either way.
     this.spawnImpulse(
       this.pointerWorld.clone(),
       Math.min(1, strengthScale),
       this.timer.getElapsed(),
+      Math.random() * Math.PI * 2,
     );
   }
 
@@ -472,6 +557,7 @@ export class SplatField {
     this.timer.dispose();
     this.points?.geometry.dispose();
     this.material?.dispose();
+    this.room?.dispose();
     this.bloomPass?.dispose();
     this.composer?.dispose();
     this.renderer.dispose();

@@ -40,6 +40,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# diagnostic renders from the scene bake; the shipped assets land in public/scene
+/scripts/out
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

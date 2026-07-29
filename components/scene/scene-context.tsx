@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { useHydrated } from "@/lib/hydrated";
 import { SplatField } from "@/lib/scene/splat-field";
 
 type SceneApi = {
@@ -45,6 +46,7 @@ type SceneStageProps = {
   plateUrl: string;
   depthUrl?: string | null;
   splatUrl?: string | null;
+  roomUrl?: string | null;
   children: ReactNode;
 };
 
@@ -52,16 +54,13 @@ export function SceneStage({
   plateUrl,
   depthUrl = null,
   splatUrl = null,
+  roomUrl = null,
   children,
 }: SceneStageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fieldRef = useRef<SplatField | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const hydrated = useHydrated();
   const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -74,6 +73,7 @@ export function SceneStage({
       plateUrl,
       depthUrl,
       splatUrl,
+      roomUrl,
       reducedMotion,
       onReady: () => setReady(true),
     });
@@ -132,7 +132,7 @@ export function SceneStage({
       fieldRef.current = null;
       setReady(false);
     };
-  }, [plateUrl, depthUrl, splatUrl]);
+  }, [plateUrl, depthUrl, splatUrl, roomUrl]);
 
   const focus = useCallback((u: number | null, v = 0.5, push = 0) => {
     fieldRef.current?.setFocus(u, v, push);
@@ -164,7 +164,7 @@ export function SceneStage({
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/45" />
       </div>
-      {mounted && !ready && <SceneLoader />}
+      {hydrated && !ready && <SceneLoader />}
       {children}
     </SceneContext.Provider>
   );

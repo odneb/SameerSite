@@ -19,8 +19,9 @@ export default async function PreviewPage() {
     <main className="relative h-dvh w-full overflow-hidden">
       <SceneStage
         plateUrl="/scene/hero-plate.jpg"
-        depthUrl={process.env.NEXT_PUBLIC_DEPTH_URL ?? null}
+        depthUrl={process.env.NEXT_PUBLIC_DEPTH_URL ?? "/scene/hero-depth.png"}
         splatUrl={process.env.NEXT_PUBLIC_SPLAT_URL ?? null}
+        roomUrl={process.env.NEXT_PUBLIC_ROOM_URL ?? "/scene/room.glb"}
       >
         <SiteShell content={content} />
       </SceneStage>
