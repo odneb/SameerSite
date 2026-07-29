@@ -25,6 +25,7 @@ import {
   subscribeTuning,
   type Control,
   type Section,
+  type Tuning,
 } from "@/lib/scene/tuning";
 
 /**
@@ -239,15 +240,14 @@ export function TuningPanel() {
               }))
             }
             onReset={() => {
-              resetSection(section.id);
+              resetSection((section.resetKey ?? section.id) as keyof Tuning);
               setStale(true);
             }}
             onChange={onChange}
           />
         ))}
         <p className="py-3 text-white/25">
-          {"\\"} closes. changes apply live; the lens and anything under cloud
-          build need a rebuild.
+          {"\\"} closes. splat lens and cloud build need a rebuild. 3d lens is live.
         </p>
       </div>
     </div>

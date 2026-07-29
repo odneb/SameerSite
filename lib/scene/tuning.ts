@@ -66,22 +66,43 @@ export type LightTuning = {
   flickerSpeed: number;
 };
 
+/** One lens and orbit. The splat cloud and the mesh each get their own. */
+export type CameraSettings = {
+  fov: number;
+  fitPadding: number;
+  yaw: number;
+  pitch: number;
+  distance: number;
+  targetX: number;
+  targetY: number;
+};
+
+/** Per-layer colour, applied in each layer's shader before the combined grade. */
+export type LayerColor = {
+  brightness: number;
+  saturation: number;
+  contrast: number;
+  tintR: number;
+  tintG: number;
+  tintB: number;
+  warmR: number;
+  warmG: number;
+  warmB: number;
+  shadows: number;
+  highlights: number;
+};
+
 export type Tuning = {
-  camera: {
-    fov: number;
-    fitPadding: number;
-    /** Manual offsets, added on top of the drift and the pointer. */
-    yaw: number;
-    pitch: number;
-    distance: number;
-    targetX: number;
-    targetY: number;
+  splatCamera: CameraSettings;
+  roomCamera: CameraSettings;
+  /** Pointer sway and drift — only the splat camera follows these. */
+  view: {
+    linkRoomCamera: boolean;
     maxYaw: number;
     maxPitch: number;
     ease: number;
     driftAmplitude: number;
     driftPeriod: number;
-    /** Hold the camera perfectly still. Essential for judging alignment. */
     freeze: boolean;
   };
   splats: {
@@ -103,6 +124,17 @@ export type Tuning = {
     glintSpeed: number;
     glintWidth: number;
     glintStrength: number;
+    colorBrightness: number;
+    colorSaturation: number;
+    colorContrast: number;
+    colorTintR: number;
+    colorTintG: number;
+    colorTintB: number;
+    colorWarmR: number;
+    colorWarmG: number;
+    colorWarmB: number;
+    colorShadows: number;
+    colorHighlights: number;
   };
   room: {
     visible: boolean;
@@ -111,10 +143,16 @@ export type Tuning = {
     doubleSide: boolean;
     brightness: number;
     saturation: number;
+    contrast: number;
     highlight: number;
     tintR: number;
     tintG: number;
     tintB: number;
+    warmR: number;
+    warmG: number;
+    warmB: number;
+    shadows: number;
+    highlights: number;
     grainAmount: number;
     grainScale: number;
     rimStrength: number;
@@ -192,16 +230,26 @@ export type Tuning = {
   };
 };
 
-function defaults(): Tuning {
+function cameraDefaults(): CameraSettings {
   return {
-    camera: {
-      fov: CAMERA.fov,
-      fitPadding: CAMERA.fitPadding,
-      yaw: 0,
-      pitch: 0,
-      distance: 0,
-      targetX: 0,
-      targetY: 0,
+    fov: CAMERA.fov,
+    fitPadding: CAMERA.fitPadding,
+    yaw: 0,
+    pitch: 0,
+    distance: 0,
+    targetX: 0,
+    targetY: 0,
+  };
+}
+
+
+function defaults(): Tuning {
+  const camera = cameraDefaults();
+  return {
+    splatCamera: { ...camera },
+    roomCamera: { ...camera },
+    view: {
+      linkRoomCamera: false,
       maxYaw: CAMERA.maxYaw,
       maxPitch: CAMERA.maxPitch,
       ease: CAMERA.ease,
@@ -228,6 +276,17 @@ function defaults(): Tuning {
       glintSpeed: MOTION.glintSpeed,
       glintWidth: MOTION.glintWidth,
       glintStrength: MOTION.glintStrength,
+      colorBrightness: 1,
+      colorSaturation: 1.12,
+      colorContrast: 1,
+      colorTintR: 1,
+      colorTintG: 1,
+      colorTintB: 1,
+      colorWarmR: RENDER.warmth[0],
+      colorWarmG: RENDER.warmth[1],
+      colorWarmB: RENDER.warmth[2],
+      colorShadows: 0,
+      colorHighlights: 0,
     },
     room: {
       visible: true,
@@ -236,10 +295,16 @@ function defaults(): Tuning {
       doubleSide: true,
       brightness: ROOM.brightness,
       saturation: ROOM.saturation,
+      contrast: 1,
       highlight: ROOM.highlight,
       tintR: ROOM.tint[0],
       tintG: ROOM.tint[1],
       tintB: ROOM.tint[2],
+      warmR: ROOM.tint[0],
+      warmG: ROOM.tint[1],
+      warmB: ROOM.tint[2],
+      shadows: 0,
+      highlights: 0,
       grainAmount: ROOM.grainAmount,
       grainScale: ROOM.grainScale,
       rimStrength: ROOM.rimStrength,
@@ -342,7 +407,7 @@ function defaults(): Tuning {
 export type BuildTuning = Tuning["build"] & { fov: number };
 
 export function buildTuning(state: Tuning = current): BuildTuning {
-  return { ...state.build, fov: state.camera.fov };
+  return { ...state.build, fov: state.splatCamera.fov };
 }
 
 let current = defaults();
@@ -442,7 +507,43 @@ export function exportChanges() {
 }
 
 export function importTuning(json: string) {
-  const parsed = JSON.parse(json) as Partial<Tuning>;
+  const parsed = JSON.parse(json) as Partial<Tuning> & {
+    camera?: Partial<CameraSettings> & {
+      maxYaw?: number;
+      maxPitch?: number;
+      ease?: number;
+      driftAmplitude?: number;
+      driftPeriod?: number;
+      freeze?: boolean;
+    };
+  };
+
+  // Older exports used a single `camera` block for both layers.
+  if (parsed.camera && !parsed.splatCamera) {
+    const {
+      maxYaw,
+      maxPitch,
+      ease,
+      driftAmplitude,
+      driftPeriod,
+      freeze,
+      ...lens
+    } = parsed.camera;
+    parsed.splatCamera = lens as CameraSettings;
+    parsed.roomCamera = { ...(lens as CameraSettings) };
+    parsed.view = {
+      ...defaults().view,
+      ...(parsed.view ?? {}),
+      ...(maxYaw !== undefined ? { maxYaw } : {}),
+      ...(maxPitch !== undefined ? { maxPitch } : {}),
+      ...(ease !== undefined ? { ease } : {}),
+      ...(driftAmplitude !== undefined ? { driftAmplitude } : {}),
+      ...(driftPeriod !== undefined ? { driftPeriod } : {}),
+      ...(freeze !== undefined ? { freeze } : {}),
+    };
+    delete parsed.camera;
+  }
+
   const merge = (target: unknown, source: unknown): unknown => {
     if (Array.isArray(target) && Array.isArray(source)) {
       return target.map((item, index) =>
@@ -489,7 +590,9 @@ export type Control =
     };
 
 export type Section = {
-  id: keyof Tuning | "build";
+  id: string;
+  /** Which tuning block reset applies to. Defaults to `id` when it is a top-level key. */
+  resetKey?: keyof Tuning;
   title: string;
   hint?: string;
   /** Open on first paint. Only the ones you reach for immediately. */
@@ -541,29 +644,73 @@ function lightControls(index: number, name: string): Control[] {
   ];
 }
 
+function cameraControls(
+  prefix: string,
+  label: string,
+  opts: { rebuildFov?: boolean; hint?: string } = {},
+): Control[] {
+  return [
+    range(`${prefix}.fov`, `${label} — lens`, 8, 90, 0.5, {
+      rebuild: opts.rebuildFov,
+      hint: opts.rebuildFov ? "Rebuilds: the splat solve is tied to this lens." : opts.hint,
+    }),
+    range(`${prefix}.fitPadding`, `${label} — fit`, 0.5, 2, 0.005),
+    range(`${prefix}.yaw`, `${label} — yaw`, -0.8, 0.8, 0.002),
+    range(`${prefix}.pitch`, `${label} — pitch`, -0.8, 0.8, 0.002),
+    range(`${prefix}.distance`, `${label} — dolly`, -9, 9, 0.02),
+    range(`${prefix}.targetX`, `${label} — target x`, -6, 6, 0.02),
+    range(`${prefix}.targetY`, `${label} — target y`, -6, 6, 0.02),
+  ];
+}
+
+function splatColorControls(): Control[] {
+  return [
+    range("splats.colorBrightness", "brightness", 0, 3, 0.005),
+    range("splats.colorSaturation", "saturation", 0, 2.5, 0.005),
+    range("splats.colorContrast", "contrast", 0.3, 2.5, 0.005),
+    range("splats.colorShadows", "shadows", -1, 1, 0.005),
+    range("splats.colorHighlights", "highlights", -1, 1, 0.005),
+    range("splats.colorTintR", "tint red", 0, 2, 0.005),
+    range("splats.colorTintG", "tint green", 0, 2, 0.005),
+    range("splats.colorTintB", "tint blue", 0, 2, 0.005),
+    range("splats.colorWarmR", "tone red", 0.5, 1.5, 0.002),
+    range("splats.colorWarmG", "tone green", 0.5, 1.5, 0.002),
+    range("splats.colorWarmB", "tone blue", 0.5, 1.5, 0.002),
+  ];
+}
+
 export const SECTIONS: Section[] = [
   {
-    id: "camera",
-    title: "camera",
-    hint: "Freeze first, then align. The lens rebuilds the cloud.",
+    id: "splatCamera",
+    title: "splat camera",
+    hint: "The lens the cloud is seen through. Rebuild after moving it.",
     open: true,
+    controls: cameraControls("splatCamera", "splat", { rebuildFov: true }),
+  },
+  {
+    id: "roomCamera",
+    title: "3d camera",
+    hint: "A separate lens for the mesh. Unlink in view motion to move it alone.",
+    open: true,
+    controls: cameraControls("roomCamera", "3d", {
+      hint: "The mesh is re-fit live when this lens moves.",
+    }),
+  },
+  {
+    id: "view",
+    title: "view motion",
     controls: [
-      toggle("camera.freeze", "freeze", "Stops the drift and the pointer sway."),
-      range("camera.fov", "lens (fov)", 8, 90, 0.5, {
-        rebuild: true,
-        hint: "Rebuilds: the splat solve is tied to the lens.",
-      }),
-      range("camera.fitPadding", "fit", 0.5, 2, 0.005),
-      range("camera.yaw", "yaw", -0.8, 0.8, 0.002),
-      range("camera.pitch", "pitch", -0.8, 0.8, 0.002),
-      range("camera.distance", "dolly", -9, 9, 0.02),
-      range("camera.targetX", "target x", -6, 6, 0.02),
-      range("camera.targetY", "target y", -6, 6, 0.02),
-      range("camera.maxYaw", "sway yaw", 0, 0.6, 0.002),
-      range("camera.maxPitch", "sway pitch", 0, 0.6, 0.002),
-      range("camera.ease", "sway ease", 0.002, 0.3, 0.001),
-      range("camera.driftAmplitude", "drift", 0, 0.3, 0.001),
-      range("camera.driftPeriod", "drift period", 3, 90, 0.5),
+      toggle(
+        "view.linkRoomCamera",
+        "link 3d camera to splat",
+        "When on, the mesh camera copies the splat camera every frame.",
+      ),
+      toggle("view.freeze", "freeze splat sway", "Stops drift and pointer sway on the cloud."),
+      range("view.maxYaw", "sway yaw", 0, 0.6, 0.002),
+      range("view.maxPitch", "sway pitch", 0, 0.6, 0.002),
+      range("view.ease", "sway ease", 0.002, 0.3, 0.001),
+      range("view.driftAmplitude", "drift", 0, 0.3, 0.001),
+      range("view.driftPeriod", "drift period", 3, 90, 0.5),
     ],
   },
   {
@@ -593,9 +740,16 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
+    id: "splatColor",
+    resetKey: "splats",
+    title: "splat colour",
+    hint: "Applied in the splat shader, before the combined grade.",
+    controls: splatColorControls(),
+  },
+  {
     id: "room",
     title: "3d scene",
-    hint: "Offsets and rotation pivot on the bake's own target.",
+    hint: "Mesh transform. Offsets pivot on the bake's own target.",
     controls: [
       toggle("room.visible", "visible"),
       range("room.opacity", "opacity", 0, 1, 0.005),
@@ -613,20 +767,34 @@ export const SECTIONS: Section[] = [
       range("room.offsetY", "move y", -12, 12, 0.02),
       range("room.offsetZ", "move z", -12, 12, 0.02),
       range("room.scale", "scale", 0.1, 4, 0.005),
-      range("room.brightness", "brightness", 0, 3, 0.005),
-      range("room.saturation", "saturation", 0, 2, 0.005),
-      range("room.highlight", "highlight rolloff", 0, 20, 0.05),
-      range("room.backlight", "backlight rim", 0, 6, 0.01),
       range("room.rimStrength", "rim", 0, 5, 0.01),
       range("room.rimPower", "rim tightness", 0.2, 8, 0.02),
+      range("room.backlight", "backlight rim", 0, 6, 0.01),
       range("room.lightWrap", "light wrap", 0, 1.5, 0.005),
-      range("room.tintR", "tint red", 0, 2, 0.005),
-      range("room.tintG", "tint green", 0, 2, 0.005),
-      range("room.tintB", "tint blue", 0, 2, 0.005),
+      range("room.highlight", "highlight rolloff", 0, 20, 0.05),
       range("room.grainAmount", "grain", 0, 1.5, 0.005),
       range("room.grainScale", "grain scale", 0.2, 20, 0.05),
       range("room.breathAmount", "breath", 0, 0.5, 0.002),
       range("room.breathSpeed", "breath speed", 0, 2, 0.005),
+    ],
+  },
+  {
+    id: "roomColor",
+    resetKey: "room",
+    title: "3d colour",
+    hint: "Applied in the mesh shader, before the combined grade.",
+    controls: [
+      range("room.brightness", "brightness", 0, 3, 0.005),
+      range("room.saturation", "saturation", 0, 2, 0.005),
+      range("room.contrast", "contrast", 0.3, 2.5, 0.005),
+      range("room.shadows", "shadows", -1, 1, 0.005),
+      range("room.highlights", "highlights", -1, 1, 0.005),
+      range("room.tintR", "tint red", 0, 2, 0.005),
+      range("room.tintG", "tint green", 0, 2, 0.005),
+      range("room.tintB", "tint blue", 0, 2, 0.005),
+      range("room.warmR", "tone red", 0.5, 1.5, 0.002),
+      range("room.warmG", "tone green", 0.5, 1.5, 0.002),
+      range("room.warmB", "tone blue", 0.5, 1.5, 0.002),
     ],
   },
   {
@@ -637,7 +805,8 @@ export const SECTIONS: Section[] = [
   },
   {
     id: "post",
-    title: "grade",
+    title: "combined grade",
+    hint: "Sits on top of both layers — bloom, halation, and the final print look.",
     controls: [
       range("post.exposure", "exposure", 0.1, 4, 0.005),
       range("post.brightness", "brightness", 0, 3, 0.005),

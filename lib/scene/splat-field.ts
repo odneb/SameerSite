@@ -116,7 +116,10 @@ export class SplatField {
 
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera: THREE.PerspectiveCamera;
+  private splatCamera: THREE.PerspectiveCamera;
+  private roomCamera: THREE.PerspectiveCamera;
+  private roomPass: RenderPass | null = null;
+  private splatPass: RenderPass | null = null;
   private composer: EffectComposer | null = null;
   private gradePass: ShaderPass | null = null;
   private bloomPass: UnrealBloomPass | null = null;
@@ -138,7 +141,8 @@ export class SplatField {
   private targetOffset = new THREE.Vector2(0, 0);
   private focusOffset = new THREE.Vector3(0, 0, 0);
   private targetFocus = new THREE.Vector3(0, 0, 0);
-  private baseDistance = 12;
+  private splatBaseDistance = 12;
+  private roomBaseDistance = 12;
 
   private pointerNdc = new THREE.Vector2(0, 0);
   private pointerWorld = new THREE.Vector3();
@@ -185,13 +189,20 @@ export class SplatField {
 
     this.timer.connect(document);
 
-    this.camera = new THREE.PerspectiveCamera(
-      this.tuning.camera.fov,
+    this.splatCamera = new THREE.PerspectiveCamera(
+      this.tuning.splatCamera.fov,
       1,
       CAMERA.near,
       CAMERA.far,
     );
-    this.camera.position.set(0, 0, this.baseDistance);
+    this.roomCamera = new THREE.PerspectiveCamera(
+      this.tuning.roomCamera.fov,
+      1,
+      CAMERA.near,
+      CAMERA.far,
+    );
+    this.splatCamera.position.set(0, 0, this.splatBaseDistance);
+    this.roomCamera.position.set(0, 0, this.roomBaseDistance);
     this.interactionPlane.constant = -this.tuning.turbulence.planeDepth;
   }
 
@@ -221,8 +232,8 @@ export class SplatField {
    * which is the entire reason the two share a space. It is not the same as
    * `baseDistance`: that one moves with the viewport so the frame always covers.
    */
-  private lensDistance(worldHeight: number) {
-    return worldHeight / 2 / Math.tan((this.tuning.camera.fov * Math.PI) / 360);
+  private lensDistance(worldHeight: number, fov: number) {
+    return worldHeight / 2 / Math.tan((fov * Math.PI) / 360);
   }
 
   private async buildRoom(worldHeight: number) {
@@ -234,7 +245,7 @@ export class SplatField {
       const room = await loadRoom({
         url: roomUrl,
         transform: this.roomTransform,
-        lensDistance: this.lensDistance(worldHeight),
+        lensDistance: this.lensDistance(worldHeight, this.tuning.roomCamera.fov),
         uniforms: this.uniforms,
         maxAnisotropy: this.renderer.capabilities.getMaxAnisotropy(),
       });
@@ -351,6 +362,13 @@ export class SplatField {
       uTurbLimit: { value: 1.2 },
       uFalloff: { value: POINTS.falloff },
       uGlow: { value: POINTS.glow },
+      uColorBrightness: { value: 1 },
+      uColorSaturation: { value: 1.12 },
+      uColorContrast: { value: 1 },
+      uColorTint: { value: new THREE.Vector3(1, 1, 1) },
+      uColorWarmth: { value: new THREE.Vector3(...RENDER.warmth) },
+      uColorShadows: { value: 0 },
+      uColorHighlights: { value: 0 },
     };
 
     this.material = new THREE.ShaderMaterial({
@@ -375,7 +393,12 @@ export class SplatField {
   private buildComposer() {
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+    this.roomPass = new RenderPass(this.scene, this.roomCamera);
+    this.splatPass = new RenderPass(this.scene, this.splatCamera);
+    this.splatPass.clear = false;
+    this.composer.addPass(this.roomPass);
+    this.composer.addPass(this.splatPass);
 
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(size.x, size.y),
@@ -395,15 +418,16 @@ export class SplatField {
     this.composer.addPass(this.gradePass);
   }
 
-  /** Frame the plate so it always covers the viewport, whatever the aspect. */
-  private fitCamera(bounds: { width: number; height: number }) {
+  /** Cover distance for a lens so the plate always fills the viewport. */
+  private fitDistance(
+    bounds: { width: number; height: number },
+    settings: Tuning["splatCamera"],
+  ) {
     const aspect = Math.max(this.canvas.clientWidth / Math.max(this.canvas.clientHeight, 1), 0.2);
-    const halfFov = (this.tuning.camera.fov * Math.PI) / 360;
+    const halfFov = (settings.fov * Math.PI) / 360;
     const distForHeight = bounds.height / 2 / Math.tan(halfFov);
     const distForWidth = bounds.width / 2 / (Math.tan(halfFov) * aspect);
-    this.baseDistance =
-      Math.min(distForHeight, distForWidth) / Math.max(this.tuning.camera.fitPadding, 0.05);
-    this.camera.position.z = this.baseDistance;
+    return Math.min(distForHeight, distForWidth) / Math.max(settings.fitPadding, 0.05);
   }
 
   resize() {
@@ -412,7 +436,9 @@ export class SplatField {
 
     this.renderer.setSize(width, height, false);
     this.composer?.setSize(width, height);
-    this.camera.aspect = width / height;
+    const aspect = width / height;
+    this.splatCamera.aspect = aspect;
+    this.roomCamera.aspect = aspect;
     if (this.gradePass) {
       this.gradePass.uniforms.uAspect.value = width / Math.max(height, 1);
     }
@@ -421,21 +447,19 @@ export class SplatField {
   }
 
   /**
-   * Re-derive everything that follows from the lens, without touching the render
+   * Re-derive everything that follows from each lens, without touching the render
    * targets.
-   *
-   * Kept apart from `resize` on purpose: `setSize` on the composer reallocates
-   * every buffer in the chain, and doing that from a slider's input event stalls
-   * the frame badly enough to look like the scene has broken.
    */
   private refitCamera() {
-    this.camera.fov = this.tuning.camera.fov;
-    this.fitCamera(this.cachedBounds);
-    this.camera.updateProjectionMatrix();
+    this.splatCamera.fov = this.tuning.splatCamera.fov;
+    this.roomCamera.fov = this.tuning.roomCamera.fov;
+    this.splatBaseDistance = this.fitDistance(this.cachedBounds, this.tuning.splatCamera);
+    this.roomBaseDistance = this.fitDistance(this.cachedBounds, this.tuning.roomCamera);
+    this.splatCamera.updateProjectionMatrix();
+    this.roomCamera.updateProjectionMatrix();
 
-    // gl_PointSize is in framebuffer pixels, so the focal length must be too.
     const buffer = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const halfFov = (this.tuning.camera.fov * Math.PI) / 360;
+    const halfFov = (this.tuning.splatCamera.fov * Math.PI) / 360;
     if (this.uniforms.uFocal) {
       this.uniforms.uFocal.value = buffer.y / 2 / Math.tan(halfFov);
     }
@@ -474,6 +498,21 @@ export class SplatField {
       splats.shimmerSpeed,
       splats.glintSpeed,
       splats.glintStrength,
+    );
+    u.uColorBrightness.value = splats.colorBrightness;
+    u.uColorSaturation.value = splats.colorSaturation;
+    u.uColorContrast.value = splats.colorContrast;
+    u.uColorShadows.value = splats.colorShadows;
+    u.uColorHighlights.value = splats.colorHighlights;
+    (u.uColorTint.value as THREE.Vector3).set(
+      splats.colorTintR,
+      splats.colorTintG,
+      splats.colorTintB,
+    );
+    (u.uColorWarmth.value as THREE.Vector3).set(
+      splats.colorWarmR,
+      splats.colorWarmG,
+      splats.colorWarmB,
     );
 
     if (this.points) this.points.visible = splats.visible;
@@ -562,7 +601,10 @@ export class SplatField {
     const uniforms = room.material.uniforms;
     uniforms.uBrightness.value = values.brightness;
     uniforms.uSaturation.value = values.saturation;
+    uniforms.uContrast.value = values.contrast;
     uniforms.uHighlight.value = values.highlight;
+    uniforms.uShadows.value = values.shadows;
+    uniforms.uHighlights.value = values.highlights;
     uniforms.uGrainAmount.value = values.grainAmount;
     uniforms.uGrainScale.value = values.grainScale;
     uniforms.uRimStrength.value = values.rimStrength;
@@ -577,6 +619,11 @@ export class SplatField {
       values.tintG,
       values.tintB,
     );
+    (uniforms.uWarmth.value as THREE.Vector3).set(
+      values.warmR,
+      values.warmG,
+      values.warmB,
+    );
 
     if (this.roomBlend !== values.blend) {
       this.roomBlend = values.blend;
@@ -588,7 +635,10 @@ export class SplatField {
       room.material.needsUpdate = true;
     }
 
-    room.place(this.lensDistance(this.cachedBounds.height), values);
+    room.place(
+      this.lensDistance(this.cachedBounds.height, state.roomCamera.fov),
+      values,
+    );
   }
 
   start() {
@@ -629,41 +679,74 @@ export class SplatField {
   };
 
   private updateCamera(delta: number, elapsed: number) {
-    const settings = this.tuning.camera;
-    const ease = 1 - Math.pow(1 - settings.ease, delta * 60);
+    this.applyOrbitCamera(
+      this.splatCamera,
+      this.tuning.splatCamera,
+      this.splatBaseDistance,
+      delta,
+      elapsed,
+      true,
+    );
 
-    this.cameraOffset.lerp(this.targetOffset, ease);
-    this.focusOffset.lerp(this.targetFocus, ease * 0.8);
+    if (this.tuning.view.linkRoomCamera) {
+      this.roomCamera.position.copy(this.splatCamera.position);
+      this.roomCamera.quaternion.copy(this.splatCamera.quaternion);
+      return;
+    }
 
-    // Frozen, the manual offsets are the only thing moving the camera — which is
-    // the only way to judge whether two things are actually aligned.
-    const live = settings.freeze ? 0 : 1;
+    this.applyOrbitCamera(
+      this.roomCamera,
+      this.tuning.roomCamera,
+      this.roomBaseDistance,
+      delta,
+      elapsed,
+      false,
+    );
+  }
 
-    // Autonomous drift so the frame is never static, even untouched.
-    const drift = (elapsed / Math.max(settings.driftPeriod, 0.5)) * Math.PI * 2;
+  private applyOrbitCamera(
+    camera: THREE.PerspectiveCamera,
+    settings: Tuning["splatCamera"],
+    baseDistance: number,
+    delta: number,
+    elapsed: number,
+    interactive: boolean,
+  ) {
+    const view = this.tuning.view;
+    const ease = interactive ? 1 - Math.pow(1 - view.ease, delta * 60) : 1;
+
+    if (interactive) {
+      this.cameraOffset.lerp(this.targetOffset, ease);
+      this.focusOffset.lerp(this.targetFocus, ease * 0.8);
+    }
+
+    const live = interactive && !view.freeze ? 1 : 0;
+    const drift = (elapsed / Math.max(view.driftPeriod, 0.5)) * Math.PI * 2;
     const yaw =
       settings.yaw +
-      live *
-        (this.cameraOffset.x * settings.maxYaw +
-          Math.sin(drift) * settings.driftAmplitude);
+      (interactive
+        ? live *
+          (this.cameraOffset.x * view.maxYaw + Math.sin(drift) * view.driftAmplitude)
+        : 0);
     const pitch =
       settings.pitch +
-      live *
-        (this.cameraOffset.y * settings.maxPitch +
-          Math.cos(drift * 0.73) * settings.driftAmplitude * 0.6);
+      (interactive
+        ? live *
+          (this.cameraOffset.y * view.maxPitch +
+            Math.cos(drift * 0.73) * view.driftAmplitude * 0.6)
+        : 0);
 
-    const focusX = this.focusOffset.x * live;
-    const focusY = this.focusOffset.y * live;
+    const focusX = interactive ? this.focusOffset.x * live : 0;
+    const focusY = interactive ? this.focusOffset.y * live : 0;
+    const distance =
+      baseDistance + (interactive ? this.focusOffset.z * live : 0) + settings.distance;
 
-    // Orbit around the volume rather than sliding the camera sideways: the
-    // parallax between depth layers is what makes it read as a real space.
-    const distance = this.baseDistance + this.focusOffset.z * live + settings.distance;
-    this.camera.position.set(
+    camera.position.set(
       Math.sin(yaw) * distance + focusX * 0.35 + settings.targetX,
       Math.sin(pitch) * distance + focusY * 0.35 + settings.targetY,
       Math.cos(yaw) * Math.cos(pitch) * distance,
     );
-    this.camera.lookAt(
+    camera.lookAt(
       focusX * 0.6 + settings.targetX,
       focusY * 0.6 + settings.targetY,
       0,
@@ -706,7 +789,7 @@ export class SplatField {
 
     if (!this.points) return;
 
-    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    this.raycaster.setFromCamera(this.pointerNdc, this.splatCamera);
     const hit = this.raycaster.ray.intersectPlane(this.interactionPlane, this.pointerWorld);
     if (!hit) return;
 

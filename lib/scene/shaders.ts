@@ -239,13 +239,32 @@ void main() {
 export const splatFragmentShader = /* glsl */ `
 precision highp float;
 
+#define LUMA vec3(0.2126, 0.7152, 0.0722)
+
 uniform float uFalloff;
 uniform float uGlow;
+uniform float uColorBrightness;
+uniform float uColorSaturation;
+uniform float uColorContrast;
+uniform vec3  uColorTint;
+uniform vec3  uColorWarmth;
+uniform float uColorShadows;
+uniform float uColorHighlights;
 
 varying vec3  vColor;
 varying float vAlpha;
 varying float vRotation;
 varying float vAspect;
+
+vec3 splatGrade(vec3 color) {
+  color *= uColorWarmth * uColorTint * uColorBrightness;
+  float level = dot(color, LUMA);
+  color += color * uColorShadows * (1.0 - smoothstep(0.0, 0.45, level));
+  color -= color * uColorHighlights * smoothstep(0.5, 1.0, level);
+  float grey = dot(color, LUMA);
+  color = mix(vec3(grey), color, uColorSaturation);
+  return clamp((color - 0.5) * uColorContrast + 0.5, 0.0, 1.0);
+}
 
 void main() {
   // Shape an oriented ellipse inside the square sprite.
@@ -262,9 +281,11 @@ void main() {
   float alpha = gaussian * vAlpha;
   if (alpha < 0.0035) discard;
 
+  vec3 color = splatGrade(vColor);
+
   // Premultiplied output, with a touch of extra emission in the core so dense
   // regions bloom instead of flattening out.
-  gl_FragColor = vec4(vColor * alpha * (1.0 + uGlow * gaussian), alpha);
+  gl_FragColor = vec4(color * alpha * (1.0 + uGlow * gaussian), alpha);
 }
 `;
 
@@ -305,6 +326,7 @@ export const roomFragmentShader = /* glsl */ `
 precision highp float;
 
 #define LIGHT_COUNT ${LIGHT_COUNT}
+#define LUMA vec3(0.2126, 0.7152, 0.0722)
 
 uniform sampler2D uMap;
 uniform float uTime;
@@ -312,8 +334,12 @@ uniform float uReveal;
 uniform float uAmbient;
 uniform float uBrightness;
 uniform float uSaturation;
+uniform float uContrast;
 uniform float uHighlight;
 uniform vec3  uTint;
+uniform vec3  uWarmth;
+uniform float uShadows;
+uniform float uHighlights;
 uniform float uGrainAmount;
 uniform float uGrainScale;
 uniform float uRimStrength;
@@ -396,6 +422,12 @@ void main() {
   // values toward each other, so a warmth applied earlier is squeezed back out
   // of exactly the surfaces that need it most — the near-neutral bedding.
   lit *= uTint;
+
+  lit *= uWarmth;
+  float level = dot(lit, LUMA);
+  lit += lit * uShadows * (1.0 - smoothstep(0.0, 0.45, level));
+  lit -= lit * uHighlights * smoothstep(0.5, 1.0, level);
+  lit = clamp((lit - 0.5) * uContrast + 0.5, 0.0, 1.0);
 
   // Break the surface up so it belongs to the same medium as the cloud. Without
   // this the mesh is the one perfectly smooth thing in a frame made of grain,
