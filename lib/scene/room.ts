@@ -79,17 +79,57 @@ export async function loadRoomTransform(url: string): Promise<RoomTransform> {
   return (await response.json()) as RoomTransform;
 }
 
+/** A manual transform laid over the solve, for aligning the mesh by eye. */
+export type RoomAdjust = {
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
+  /** Degrees. */
+  rotateX: number;
+  rotateY: number;
+  rotateZ: number;
+  scale: number;
+};
+
 /**
  * The capture's object space to the site's world.
  *
  * `model = translate(lens) * scale(lens / captureLens) * bakeView`, which lands
  * the bake camera's target on the origin and reproduces its framing exactly.
+ *
+ * Any manual adjustment is applied *after* that, which is why it can be composed
+ * about the world origin: the solve has already put the bake's own target there,
+ * so the origin is the natural thing to rotate the room around.
  */
-export function roomPlacement(transform: RoomTransform, lensDistance: number) {
+export function roomPlacement(
+  transform: RoomTransform,
+  lensDistance: number,
+  adjust?: RoomAdjust,
+) {
   const scale = lensDistance / Math.max(transform.camera.distance, 1e-6);
   const view = new THREE.Matrix4().fromArray(transform.view);
   const model = new THREE.Matrix4().makeScale(scale, scale, scale).multiply(view);
-  return new THREE.Matrix4().makeTranslation(0, 0, lensDistance).multiply(model);
+  const placed = new THREE.Matrix4()
+    .makeTranslation(0, 0, lensDistance)
+    .multiply(model);
+
+  if (!adjust) return placed;
+
+  const degrees = Math.PI / 180;
+  const manual = new THREE.Matrix4().compose(
+    new THREE.Vector3(adjust.offsetX, adjust.offsetY, adjust.offsetZ),
+    new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(
+        adjust.rotateX * degrees,
+        adjust.rotateY * degrees,
+        adjust.rotateZ * degrees,
+        "YXZ",
+      ),
+    ),
+    new THREE.Vector3(adjust.scale, adjust.scale, adjust.scale),
+  );
+
+  return manual.multiply(placed);
 }
 
 let loader: GLTFLoader | null = null;
@@ -113,6 +153,9 @@ export type RoomOptions = {
 
 export type Room = {
   object: THREE.Object3D;
+  material: THREE.ShaderMaterial;
+  /** Re-solve the placement, e.g. after the lens or a manual offset moves. */
+  place: (lensDistance: number, adjust?: RoomAdjust) => void;
   dispose: () => void;
 };
 
@@ -154,6 +197,7 @@ export async function loadRoom(options: RoomOptions): Promise<Room> {
       uLightPos: options.uniforms.uLightPos,
       uLightColor: options.uniforms.uLightColor,
       uLightParams: options.uniforms.uLightParams,
+      uLightExtra: options.uniforms.uLightExtra,
       uBrightness: { value: ROOM.brightness },
       uSaturation: { value: ROOM.saturation },
       uHighlight: { value: ROOM.highlight },
@@ -162,9 +206,11 @@ export async function loadRoom(options: RoomOptions): Promise<Room> {
       uGrainScale: { value: ROOM.grainScale },
       uRimStrength: { value: ROOM.rimStrength },
       uRimPower: { value: ROOM.rimPower },
+      uBacklight: { value: ROOM.backlight },
       uLightWrap: { value: ROOM.lightWrap },
       uBreathAmount: { value: ROOM.breathAmount },
       uBreathSpeed: { value: ROOM.breathSpeed },
+      uOpacity: { value: ROOM.opacity },
     },
     vertexShader: roomVertexShader,
     fragmentShader: roomFragmentShader,
@@ -196,6 +242,13 @@ export async function loadRoom(options: RoomOptions): Promise<Room> {
 
   return {
     object: group,
+    material,
+    place: (lensDistance, adjust) => {
+      group.matrix.copy(roomPlacement(options.transform, lensDistance, adjust));
+      // The group's world matrix is composed by hand, so three has to be told
+      // that the children hanging off it are now stale.
+      group.updateMatrixWorld(true);
+    },
     dispose: () => {
       for (const item of disposables) item.dispose();
       map?.dispose();

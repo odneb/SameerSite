@@ -14,7 +14,7 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 
-import { CAMERA, LIGHTS, MOTION, POINTS, RENDER, ROOM, TURBULENCE } from "./config";
+import { CAMERA, LIGHTS, POINTS, RENDER, ROOM } from "./config";
 import {
   IMPULSE_COUNT,
   gradeShader,
@@ -28,6 +28,14 @@ import {
   type Room,
   type RoomTransform,
 } from "./room";
+import {
+  buildTuning,
+  getTuning,
+  subscribeTuning,
+  type BlendMode,
+  type RoomBlendMode,
+  type Tuning,
+} from "./tuning";
 import {
   buildFromPlate,
   loadImageData,
@@ -51,6 +59,46 @@ export type SplatFieldOptions = {
 type DeviceTier = "mobile" | "tablet" | "desktop";
 
 const TIER_RANK: Record<DeviceTier, number> = { mobile: 0, tablet: 1, desktop: 2 };
+
+/**
+ * Set how a layer composites.
+ *
+ * Only `premultiplied` is actually correct for the cloud — it is what lets half a
+ * million splats accumulate in any order without sorting. The rest are here
+ * because seeing a scene composited wrongly is often how you work out what it is
+ * supposed to be doing.
+ */
+function applyBlend(material: THREE.Material, mode: BlendMode | RoomBlendMode) {
+  material.transparent = mode !== "opaque";
+
+  switch (mode) {
+    case "opaque":
+      material.blending = THREE.NoBlending;
+      break;
+    case "premultiplied":
+      material.blending = THREE.CustomBlending;
+      material.blendSrc = THREE.OneFactor;
+      material.blendDst = THREE.OneMinusSrcAlphaFactor;
+      material.blendEquation = THREE.AddEquation;
+      material.blendSrcAlpha = THREE.OneFactor;
+      material.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+      break;
+    case "additive":
+      material.blending = THREE.AdditiveBlending;
+      break;
+    case "normal":
+      material.blending = THREE.NormalBlending;
+      break;
+    case "screen":
+      material.blending = THREE.CustomBlending;
+      material.blendSrc = THREE.OneMinusDstColorFactor;
+      material.blendDst = THREE.OneFactor;
+      material.blendEquation = THREE.AddEquation;
+      break;
+  }
+
+  material.needsUpdate = true;
+}
 
 function detectTier(): DeviceTier {
   if (typeof window === "undefined") return "desktop";
@@ -97,13 +145,17 @@ export class SplatField {
   private lastImpulseAt = new THREE.Vector3(9999, 9999, 9999);
   private lastPointerTime = 0;
   private impulseCursor = 0;
+  private pointerSuspended = false;
   private raycaster = new THREE.Raycaster();
-  /**
-   * The depth the pointer acts at. Sits just in front of the foreground figure,
-   * where the geometry puts him — impulses spawned much further back stir mostly
-   * empty air and the gesture goes unanswered.
-   */
-  private interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -2.2);
+  /** The depth the pointer acts at; see TURBULENCE.planeDepth. */
+  private interactionPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+
+  /** The live tuning, cached so the loop is not walking a store every frame. */
+  private tuning: Tuning = getTuning();
+  private unsubscribe: (() => void) | null = null;
+  private splatBlend: BlendMode | null = null;
+  private roomBlend: RoomBlendMode | null = null;
+  private roomDoubleSide: boolean | null = null;
 
   private frameTimes: number[] = [];
   private downscaled = false;
@@ -134,12 +186,13 @@ export class SplatField {
     this.timer.connect(document);
 
     this.camera = new THREE.PerspectiveCamera(
-      CAMERA.fov,
+      this.tuning.camera.fov,
       1,
       CAMERA.near,
       CAMERA.far,
     );
     this.camera.position.set(0, 0, this.baseDistance);
+    this.interactionPlane.constant = -this.tuning.turbulence.planeDepth;
   }
 
   async init() {
@@ -152,7 +205,12 @@ export class SplatField {
     if (this.disposed) return;
 
     this.buildComposer();
+    this.applyTuning();
     this.resize();
+
+    // Everything above reads the tuning once; from here it tracks it.
+    this.unsubscribe = subscribeTuning(() => this.applyTuning());
+
     this.options.onReady?.();
   }
 
@@ -164,7 +222,7 @@ export class SplatField {
    * `baseDistance`: that one moves with the viewport so the frame always covers.
    */
   private lensDistance(worldHeight: number) {
-    return worldHeight / 2 / Math.tan((CAMERA.fov * Math.PI) / 360);
+    return worldHeight / 2 / Math.tan((this.tuning.camera.fov * Math.PI) / 360);
   }
 
   private async buildRoom(worldHeight: number) {
@@ -228,16 +286,21 @@ export class SplatField {
       }
     }
 
-    const targetCount =
+    const build = buildTuning(this.tuning);
+    // The tier ceiling still applies: a phone does not get a desktop budget just
+    // because somebody dragged the count up on a desktop.
+    const ceiling =
       this.tier === "mobile"
         ? POINTS.countMobile
         : this.tier === "tablet"
           ? POINTS.countTablet
-          : POINTS.countDesktop;
+          : Infinity;
+    const targetCount = Math.min(build.splatCount, ceiling);
 
     onProgress?.(0.7);
     const buffers = buildFromPlate(plate, {
       targetCount,
+      build,
       depthData,
       roomDepth: this.roomTransform ? roomDepthRatios(this.roomTransform) : null,
     });
@@ -254,78 +317,52 @@ export class SplatField {
     geometry.setAttribute("aSeed", new THREE.BufferAttribute(buffers.seed, 3));
     geometry.setAttribute("aLuma", new THREE.BufferAttribute(buffers.luma, 1));
 
-    const motionScale = this.options.reducedMotion ? 0.22 : 1;
-
+    // Everything with a tuning entry is seeded here and then owned by
+    // `applyTuning`, which runs before the first frame.
     this.uniforms = {
       uTime: { value: 0 },
       uFocal: { value: 900 },
       uSizeScale: { value: 1 },
       uReveal: { value: 0 },
-      uMotionScale: { value: motionScale },
+      uOpacity: { value: POINTS.opacity },
+      uMotionScale: { value: this.options.reducedMotion ? 0.22 : 1 },
       uAmbient: { value: RENDER.ambient },
-      uDepthHaze: { value: 0.3 },
-      uSwim: {
-        value: new THREE.Vector3(MOTION.swimAmplitude, MOTION.swimSpeed, 0.75),
-      },
-      uShimmer: {
-        value: new THREE.Vector4(
-          MOTION.shimmerAmount,
-          MOTION.shimmerSpeed,
-          MOTION.glintSpeed,
-          MOTION.glintStrength,
-        ),
-      },
-      uGlintWidth: { value: MOTION.glintWidth },
-      uLightPos: {
-        value: LIGHTS.map((light) => new THREE.Vector3(...light.position)),
-      },
-      uLightColor: {
-        value: LIGHTS.map((light) => new THREE.Vector3(...light.color)),
-      },
-      uLightParams: {
-        value: LIGHTS.map(
-          (light) =>
-            new THREE.Vector4(
-              light.intensity,
-              light.radius,
-              light.flickerAmount,
-              light.flickerSpeed,
-            ),
-        ),
-      },
+      uDepthHaze: { value: POINTS.depthHaze },
+      uBackscatter: { value: POINTS.backscatter },
+      uSwim: { value: new THREE.Vector3() },
+      uShimmer: { value: new THREE.Vector4() },
+      uGlintWidth: { value: 0.1 },
+      uLightPos: { value: LIGHTS.map(() => new THREE.Vector3()) },
+      uLightColor: { value: LIGHTS.map(() => new THREE.Vector3()) },
+      uLightParams: { value: LIGHTS.map(() => new THREE.Vector4()) },
+      uLightExtra: { value: LIGHTS.map(() => new THREE.Vector4()) },
       uImpulsePos: {
         value: Array.from({ length: IMPULSE_COUNT }, () => new THREE.Vector3()),
       },
       uImpulseData: {
         value: Array.from({ length: IMPULSE_COUNT }, () => new THREE.Vector4(-99, 0, 1, 0)),
       },
-      uTurbLife: { value: TURBULENCE.life },
-      uTurbTau: { value: TURBULENCE.tau },
-      uTurbAttack: { value: TURBULENCE.attack },
-      uTurbRoll: { value: TURBULENCE.roll },
-      uTurbChaos: { value: TURBULENCE.chaos },
-      uTurbScale: { value: TURBULENCE.scale },
-      uTurbLimit: { value: TURBULENCE.limit },
-      uFalloff: { value: 3.2 },
-      uGlow: { value: 0.16 },
+      uTurbLife: { value: 1 },
+      uTurbTau: { value: 1 },
+      uTurbAttack: { value: 0.3 },
+      uTurbRoll: { value: 0.7 },
+      uTurbChaos: { value: 0.7 },
+      uTurbScale: { value: 0.6 },
+      uTurbLimit: { value: 1.2 },
+      uFalloff: { value: POINTS.falloff },
+      uGlow: { value: POINTS.glow },
     };
 
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: splatVertexShader,
       fragmentShader: splatFragmentShader,
-      transparent: true,
       depthTest: false,
       depthWrite: false,
-      // Premultiplied alpha: order-independent enough for a soft cloud, and it
-      // avoids sorting half a million splats every frame.
-      blending: THREE.CustomBlending,
-      blendSrc: THREE.OneFactor,
-      blendDst: THREE.OneMinusSrcAlphaFactor,
-      blendEquation: THREE.AddEquation,
-      blendSrcAlpha: THREE.OneFactor,
-      blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+      transparent: true,
     });
+    applyBlend(this.material, "premultiplied");
+    this.splatBlend = "premultiplied";
 
     this.points = new THREE.Points(geometry, this.material);
     // Positions are displaced in the vertex shader, so CPU-side culling would
@@ -350,12 +387,10 @@ export class SplatField {
     this.composer.addPass(new OutputPass());
 
     this.gradePass = new ShaderPass(gradeShader);
-    this.gradePass.uniforms.uGrain.value = RENDER.grain;
-    this.gradePass.uniforms.uVignette.value = RENDER.vignette;
-    this.gradePass.uniforms.uAberration.value = RENDER.aberration;
-    this.gradePass.uniforms.uSaturation.value = RENDER.saturation;
-    this.gradePass.uniforms.uContrast.value = RENDER.contrast;
     this.gradePass.uniforms.uWarmth.value = new THREE.Vector3(...RENDER.warmth);
+    this.gradePass.uniforms.uHalationTint.value = new THREE.Vector3(
+      ...RENDER.halationTint,
+    );
     this.gradePass.renderToScreen = true;
     this.composer.addPass(this.gradePass);
   }
@@ -363,10 +398,11 @@ export class SplatField {
   /** Frame the plate so it always covers the viewport, whatever the aspect. */
   private fitCamera(bounds: { width: number; height: number }) {
     const aspect = Math.max(this.canvas.clientWidth / Math.max(this.canvas.clientHeight, 1), 0.2);
-    const halfFov = (CAMERA.fov * Math.PI) / 360;
+    const halfFov = (this.tuning.camera.fov * Math.PI) / 360;
     const distForHeight = bounds.height / 2 / Math.tan(halfFov);
     const distForWidth = bounds.width / 2 / (Math.tan(halfFov) * aspect);
-    this.baseDistance = Math.min(distForHeight, distForWidth) / CAMERA.fitPadding;
+    this.baseDistance =
+      Math.min(distForHeight, distForWidth) / Math.max(this.tuning.camera.fitPadding, 0.05);
     this.camera.position.z = this.baseDistance;
   }
 
@@ -377,15 +413,182 @@ export class SplatField {
     this.renderer.setSize(width, height, false);
     this.composer?.setSize(width, height);
     this.camera.aspect = width / height;
+    if (this.gradePass) {
+      this.gradePass.uniforms.uAspect.value = width / Math.max(height, 1);
+    }
+
+    this.refitCamera();
+  }
+
+  /**
+   * Re-derive everything that follows from the lens, without touching the render
+   * targets.
+   *
+   * Kept apart from `resize` on purpose: `setSize` on the composer reallocates
+   * every buffer in the chain, and doing that from a slider's input event stalls
+   * the frame badly enough to look like the scene has broken.
+   */
+  private refitCamera() {
+    this.camera.fov = this.tuning.camera.fov;
     this.fitCamera(this.cachedBounds);
     this.camera.updateProjectionMatrix();
 
     // gl_PointSize is in framebuffer pixels, so the focal length must be too.
     const buffer = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const halfFov = (CAMERA.fov * Math.PI) / 360;
+    const halfFov = (this.tuning.camera.fov * Math.PI) / 360;
     if (this.uniforms.uFocal) {
       this.uniforms.uFocal.value = buffer.y / 2 / Math.tan(halfFov);
     }
+  }
+
+  /**
+   * Push the whole tuning state into the scene.
+   *
+   * Called once before the first frame and then on every change. Values that are
+   * baked into the splat buffers are not handled here — moving one of those needs
+   * the field rebuilding, which is the panel's business, not this method's.
+   */
+  applyTuning(state: Tuning = getTuning()) {
+    this.tuning = state;
+    const u = this.uniforms;
+    if (!u.uTime) return;
+
+    const splats = state.splats;
+    u.uOpacity.value = splats.opacity;
+    u.uSizeScale.value = splats.sizeScale;
+    u.uFalloff.value = splats.falloff;
+    u.uGlow.value = splats.glow;
+    u.uAmbient.value = splats.ambient;
+    u.uDepthHaze.value = splats.depthHaze;
+    u.uBackscatter.value = splats.backscatter;
+    u.uGlintWidth.value = splats.glintWidth;
+    u.uMotionScale.value =
+      (this.options.reducedMotion ? 0.22 : 1) * splats.motionScale;
+    (u.uSwim.value as THREE.Vector3).set(
+      splats.swimAmplitude,
+      splats.swimSpeed,
+      splats.swimDepth,
+    );
+    (u.uShimmer.value as THREE.Vector4).set(
+      splats.shimmerAmount,
+      splats.shimmerSpeed,
+      splats.glintSpeed,
+      splats.glintStrength,
+    );
+
+    if (this.points) this.points.visible = splats.visible;
+    // Recompiles the program, so only when the mode has actually moved.
+    if (this.material && this.splatBlend !== splats.blend) {
+      this.splatBlend = splats.blend;
+      applyBlend(this.material, splats.blend);
+    }
+
+    const positions = u.uLightPos.value as THREE.Vector3[];
+    const colors = u.uLightColor.value as THREE.Vector3[];
+    const params = u.uLightParams.value as THREE.Vector4[];
+    const extra = u.uLightExtra.value as THREE.Vector4[];
+    state.lights.forEach((light, index) => {
+      if (index >= positions.length) return;
+      positions[index].set(light.x, light.y, light.z);
+      colors[index].set(light.r, light.g, light.b);
+      params[index].set(
+        light.intensity,
+        light.radius,
+        light.flickerAmount,
+        light.flickerSpeed,
+      );
+      extra[index].set(
+        light.backlight,
+        light.phase,
+        light.softness,
+        light.enabled ? 1 : 0,
+      );
+    });
+
+    const turbulence = state.turbulence;
+    u.uTurbLife.value = turbulence.life;
+    u.uTurbTau.value = turbulence.tau;
+    u.uTurbAttack.value = turbulence.attack;
+    u.uTurbRoll.value = turbulence.roll;
+    u.uTurbChaos.value = turbulence.chaos;
+    u.uTurbScale.value = turbulence.scale;
+    u.uTurbLimit.value = turbulence.limit;
+    this.interactionPlane.constant = -turbulence.planeDepth;
+
+    this.applyRoomTuning(state);
+
+    const post = state.post;
+    this.renderer.toneMappingExposure = post.exposure;
+    if (this.bloomPass) {
+      this.bloomPass.strength = post.bloomStrength;
+      this.bloomPass.radius = post.bloomRadius;
+      this.bloomPass.threshold = post.bloomThreshold;
+    }
+    if (this.gradePass) {
+      const g = this.gradePass.uniforms;
+      g.uGrain.value = post.grain;
+      g.uVignette.value = post.vignette;
+      g.uAberration.value = post.aberration;
+      g.uSaturation.value = post.saturation;
+      g.uContrast.value = post.contrast;
+      g.uBrightness.value = post.brightness;
+      g.uShadows.value = post.shadows;
+      g.uHighlights.value = post.highlights;
+      g.uBlur.value = post.blur;
+      g.uBlurRadius.value = post.blurRadius;
+      g.uHalation.value = post.halation;
+      g.uHalationRadius.value = post.halationRadius;
+      g.uHalationThreshold.value = post.halationThreshold;
+      (g.uWarmth.value as THREE.Vector3).set(post.warmR, post.warmG, post.warmB);
+      (g.uHalationTint.value as THREE.Vector3).set(
+        post.halationTintR,
+        post.halationTintG,
+        post.halationTintB,
+      );
+    }
+
+    // The lens drives the camera, the fit and — through the lens distance — where
+    // the mesh sits, so it has to be re-derived rather than just assigned.
+    this.refitCamera();
+  }
+
+  private applyRoomTuning(state: Tuning) {
+    const room = this.room;
+    if (!room) return;
+
+    const values = state.room;
+    room.object.visible = values.visible;
+
+    const uniforms = room.material.uniforms;
+    uniforms.uBrightness.value = values.brightness;
+    uniforms.uSaturation.value = values.saturation;
+    uniforms.uHighlight.value = values.highlight;
+    uniforms.uGrainAmount.value = values.grainAmount;
+    uniforms.uGrainScale.value = values.grainScale;
+    uniforms.uRimStrength.value = values.rimStrength;
+    uniforms.uRimPower.value = values.rimPower;
+    uniforms.uBacklight.value = values.backlight;
+    uniforms.uLightWrap.value = values.lightWrap;
+    uniforms.uBreathAmount.value = values.breathAmount;
+    uniforms.uBreathSpeed.value = values.breathSpeed;
+    uniforms.uOpacity.value = values.opacity;
+    (uniforms.uTint.value as THREE.Vector3).set(
+      values.tintR,
+      values.tintG,
+      values.tintB,
+    );
+
+    if (this.roomBlend !== values.blend) {
+      this.roomBlend = values.blend;
+      applyBlend(room.material, values.blend);
+    }
+    if (this.roomDoubleSide !== values.doubleSide) {
+      this.roomDoubleSide = values.doubleSide;
+      room.material.side = values.doubleSide ? THREE.DoubleSide : THREE.FrontSide;
+      room.material.needsUpdate = true;
+    }
+
+    room.place(this.lensDistance(this.cachedBounds.height), values);
   }
 
   start() {
@@ -426,28 +629,45 @@ export class SplatField {
   };
 
   private updateCamera(delta: number, elapsed: number) {
-    const ease = 1 - Math.pow(1 - CAMERA.ease, delta * 60);
+    const settings = this.tuning.camera;
+    const ease = 1 - Math.pow(1 - settings.ease, delta * 60);
 
     this.cameraOffset.lerp(this.targetOffset, ease);
     this.focusOffset.lerp(this.targetFocus, ease * 0.8);
 
-    // Autonomous drift so the frame is never static, even untouched.
-    const drift = (elapsed / CAMERA.driftPeriod) * Math.PI * 2;
-    const driftX = Math.sin(drift) * CAMERA.driftAmplitude;
-    const driftY = Math.cos(drift * 0.73) * CAMERA.driftAmplitude * 0.6;
+    // Frozen, the manual offsets are the only thing moving the camera — which is
+    // the only way to judge whether two things are actually aligned.
+    const live = settings.freeze ? 0 : 1;
 
-    const yaw = this.cameraOffset.x * CAMERA.maxYaw + driftX;
-    const pitch = this.cameraOffset.y * CAMERA.maxPitch + driftY;
+    // Autonomous drift so the frame is never static, even untouched.
+    const drift = (elapsed / Math.max(settings.driftPeriod, 0.5)) * Math.PI * 2;
+    const yaw =
+      settings.yaw +
+      live *
+        (this.cameraOffset.x * settings.maxYaw +
+          Math.sin(drift) * settings.driftAmplitude);
+    const pitch =
+      settings.pitch +
+      live *
+        (this.cameraOffset.y * settings.maxPitch +
+          Math.cos(drift * 0.73) * settings.driftAmplitude * 0.6);
+
+    const focusX = this.focusOffset.x * live;
+    const focusY = this.focusOffset.y * live;
 
     // Orbit around the volume rather than sliding the camera sideways: the
     // parallax between depth layers is what makes it read as a real space.
-    const distance = this.baseDistance + this.focusOffset.z;
+    const distance = this.baseDistance + this.focusOffset.z * live + settings.distance;
     this.camera.position.set(
-      Math.sin(yaw) * distance + this.focusOffset.x * 0.35,
-      Math.sin(pitch) * distance + this.focusOffset.y * 0.35,
+      Math.sin(yaw) * distance + focusX * 0.35 + settings.targetX,
+      Math.sin(pitch) * distance + focusY * 0.35 + settings.targetY,
       Math.cos(yaw) * Math.cos(pitch) * distance,
     );
-    this.camera.lookAt(this.focusOffset.x * 0.6, this.focusOffset.y * 0.6, 0);
+    this.camera.lookAt(
+      focusX * 0.6 + settings.targetX,
+      focusY * 0.6 + settings.targetY,
+      0,
+    );
   }
 
   /** Step the pixel ratio down once if we are clearly missing frame budget. */
@@ -466,8 +686,18 @@ export class SplatField {
     }
   }
 
+  /**
+   * Ignore the pointer entirely, e.g. while it is inside a panel that is sitting
+   * over the canvas. Without this, tuning a slider stirs the cloud the whole time.
+   */
+  setPointerSuspended(suspended: boolean) {
+    this.pointerSuspended = suspended;
+    if (suspended) this.releasePointer();
+  }
+
   /** Pointer position in CSS pixels, relative to the canvas. */
   setPointer(clientX: number, clientY: number) {
+    if (this.pointerSuspended) return;
     const rect = this.canvas.getBoundingClientRect();
     const x = ((clientX - rect.left) / rect.width) * 2 - 1;
     const y = -(((clientY - rect.top) / rect.height) * 2 - 1);
@@ -482,7 +712,7 @@ export class SplatField {
 
     const now = this.timer.getElapsed();
     const travelled = this.lastImpulseAt.distanceTo(this.pointerWorld);
-    if (travelled < TURBULENCE.spawnDistance) return;
+    if (travelled < this.tuning.turbulence.spawnDistance) return;
 
     const dt = Math.max(now - this.lastPointerTime, 1 / 120);
     const speed = Math.min(travelled / dt, 24);
@@ -507,14 +737,14 @@ export class SplatField {
 
     const slot = this.impulseCursor % IMPULSE_COUNT;
     this.impulseCursor++;
+    const turbulence = this.tuning.turbulence;
 
     positions[slot].copy(at);
     data[slot].set(
       now,
-      TURBULENCE.strengthMin +
-        (TURBULENCE.strengthMax - TURBULENCE.strengthMin) * intensity,
-      TURBULENCE.radiusMin +
-        (TURBULENCE.radiusMax - TURBULENCE.radiusMin) * intensity,
+      turbulence.strengthMin +
+        (turbulence.strengthMax - turbulence.strengthMin) * intensity,
+      turbulence.radiusMin + (turbulence.radiusMax - turbulence.radiusMin) * intensity,
       stroke,
     );
   }
@@ -554,6 +784,8 @@ export class SplatField {
   dispose() {
     this.disposed = true;
     this.stop();
+    this.unsubscribe?.();
+    this.unsubscribe = null;
     this.timer.dispose();
     this.points?.geometry.dispose();
     this.material?.dispose();

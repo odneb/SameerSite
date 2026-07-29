@@ -21,15 +21,18 @@ uniform float uTime;
 uniform float uFocal;
 uniform float uSizeScale;
 uniform float uReveal;
+uniform float uOpacity;
 uniform float uMotionScale;
 uniform float uAmbient;
 uniform float uDepthHaze;
+uniform float uBackscatter;
 uniform vec3  uSwim;      // amplitude, speed, depth gain
 uniform vec4  uShimmer;   // amount, speed, glint speed, glint strength
 uniform float uGlintWidth;
 uniform vec3  uLightPos[LIGHT_COUNT];
 uniform vec3  uLightColor[LIGHT_COUNT];
 uniform vec4  uLightParams[LIGHT_COUNT];  // intensity, radius, flicker amount, flicker speed
+uniform vec4  uLightExtra[LIGHT_COUNT];   // backlight, phase, softness, enabled
 uniform vec3  uImpulsePos[IMPULSE_COUNT];
 uniform vec4  uImpulseData[IMPULSE_COUNT]; // start time, strength, radius, stroke angle
 uniform float uTurbLife;
@@ -150,17 +153,44 @@ vec3 turbulence(vec3 p, vec3 seed) {
   return total;
 }
 
-/** Practical lights, attenuated in world space. No normals, all falloff. */
+/**
+ * Practical lights.
+ *
+ * A splat has no normal, so there is no diffuse term to be had — but it does not
+ * need one, because what it actually is is a speck of matter suspended in air,
+ * and the thing to model is how much of a light passing through it carries on
+ * toward the lens. That is the second term below: forward scattering, strongest
+ * when the source is directly behind the splat from where we are standing. It is
+ * why a backlit cloud has a bright edge and a dark middle, and it is added in the
+ * light's own colour rather than the splat's, because the light we are seeing
+ * never touched the surface — it went past it.
+ */
 vec3 shade(vec3 p, vec3 base, float luma) {
+  vec3 viewDir = normalize(cameraPosition - p);
   vec3 lit = base * uAmbient;
+
   for (int i = 0; i < LIGHT_COUNT; i++) {
     vec4 params = uLightParams[i];
-    float dist = length(p - uLightPos[i]);
-    float atten = 1.0 - smoothstep(0.0, params.y, dist);
-    atten *= atten;
+    vec4 extra = uLightExtra[i];
+
+    vec3 toLight = uLightPos[i] - p;
+    float dist = length(toLight);
+    vec3 l = toLight / max(dist, 1e-4);
+
+    // Softness is the exponent, so a big source falls off over a longer run
+    // than the squared curve a small one wants.
+    float atten = pow(max(1.0 - smoothstep(0.0, params.y, dist), 0.0), extra.z);
+
     float flicker = 1.0 + params.z * sin(uTime * params.w + float(i) * 2.17)
                         + params.z * 0.4 * sin(uTime * params.w * 2.7 + float(i));
-    lit += base * uLightColor[i] * params.x * atten * flicker * (0.35 + 0.65 * luma);
+
+    vec3 contribution = uLightColor[i] * params.x * atten * flicker * extra.w;
+
+    lit += base * contribution * (0.35 + 0.65 * luma);
+
+    // -dot(l, view) is 1 when the source sits directly behind this splat.
+    float forward = max(-dot(l, viewDir), 0.0);
+    lit += contribution * pow(forward, extra.y) * extra.x * uBackscatter;
   }
   return lit;
 }
@@ -195,7 +225,7 @@ void main() {
   float haze = 1.0 - clamp((-mvPosition.z - 8.0) / 12.0, 0.0, 1.0) * uDepthHaze;
 
   vColor = lit;
-  vAlpha = clamp(0.9 * shimmer * reveal * haze, 0.0, 1.0);
+  vAlpha = clamp(uOpacity * shimmer * reveal * haze, 0.0, 1.0);
   vRotation = aRotation;
   vAspect = min(aScale.x, aScale.y) / max(aScale.x, aScale.y);
 
@@ -288,13 +318,16 @@ uniform float uGrainAmount;
 uniform float uGrainScale;
 uniform float uRimStrength;
 uniform float uRimPower;
+uniform float uBacklight;
 uniform float uLightWrap;
 uniform float uBreathAmount;
 uniform float uBreathSpeed;
 uniform float uDepthHaze;
+uniform float uOpacity;
 uniform vec3  uLightPos[LIGHT_COUNT];
 uniform vec3  uLightColor[LIGHT_COUNT];
 uniform vec4  uLightParams[LIGHT_COUNT];
+uniform vec4  uLightExtra[LIGHT_COUNT];
 
 varying vec3 vWorldPos;
 varying vec3 vWorldNormal;
@@ -319,12 +352,13 @@ void main() {
 
   for (int i = 0; i < LIGHT_COUNT; i++) {
     vec4 params = uLightParams[i];
+    vec4 extra = uLightExtra[i];
+
     vec3 toLight = uLightPos[i] - vWorldPos;
     float dist = length(toLight);
     vec3 l = toLight / max(dist, 1e-4);
 
-    float atten = 1.0 - smoothstep(0.0, params.y, dist);
-    atten *= atten;
+    float atten = pow(max(1.0 - smoothstep(0.0, params.y, dist), 0.0), extra.z);
 
     float flicker = 1.0 + params.z * sin(uTime * params.w + float(i) * 2.17)
                         + params.z * 0.4 * sin(uTime * params.w * 2.7 + float(i));
@@ -334,9 +368,14 @@ void main() {
     float ndl = dot(normal, l);
     ndl = max(ndl + uLightWrap, 0.0) / (1.0 + uLightWrap);
 
-    vec3 contribution = uLightColor[i] * params.x * atten * flicker;
+    vec3 contribution = uLightColor[i] * params.x * atten * flicker * extra.w;
     lit += base * contribution * ndl;
-    rim += contribution;
+
+    // A source behind this surface can only reach us around its edge, so it is
+    // weighted into the rim rather than the body. Squared, so it takes a light
+    // that is genuinely behind the geometry to earn the extra.
+    float backness = max(-dot(l, view), 0.0);
+    rim += contribution * (1.0 + uBacklight * backness * backness);
   }
 
   // Grazing angles pick up the practicals directly, so the silhouette glows
@@ -373,20 +412,37 @@ void main() {
   lit *= haze;
 
   // Rises out of the dark on the same beat as the cloud.
-  gl_FragColor = vec4(lit * uReveal, 1.0);
+  gl_FragColor = vec4(lit * uReveal, uOpacity);
 }
 `;
 
-/** Final grade: warmth, filmic vignette, grain, and a whisper of aberration. */
+/**
+ * Final grade.
+ *
+ * Ordered the way a lab would: the optical effects first, because halation and
+ * softness happen in the glass and the emulsion and therefore precede any
+ * decision about how the image should look, then tone, then the artefacts that
+ * belong to the print.
+ */
 export const gradeShader = {
   uniforms: {
     tDiffuse: { value: null as unknown },
     uTime: { value: 0 },
+    uAspect: { value: 1.777 },
     uGrain: { value: 0.055 },
     uVignette: { value: 1.05 },
     uAberration: { value: 0.0022 },
     uSaturation: { value: 1.14 },
     uContrast: { value: 1.07 },
+    uBrightness: { value: 1 },
+    uShadows: { value: 0 },
+    uHighlights: { value: 0 },
+    uBlur: { value: 0 },
+    uBlurRadius: { value: 0.0025 },
+    uHalation: { value: 0.14 },
+    uHalationRadius: { value: 0.012 },
+    uHalationThreshold: { value: 0.55 },
+    uHalationTint: { value: null as unknown },
     uWarmth: { value: null as unknown },
   },
   vertexShader: /* glsl */ `
@@ -399,19 +455,52 @@ export const gradeShader = {
   fragmentShader: /* glsl */ `
     precision highp float;
 
+    precision highp float;
+
+    #define TAPS 10
+    #define LUMA vec3(0.2126, 0.7152, 0.0722)
+
     uniform sampler2D tDiffuse;
     uniform float uTime;
+    uniform float uAspect;
     uniform float uGrain;
     uniform float uVignette;
     uniform float uAberration;
     uniform float uSaturation;
     uniform float uContrast;
+    uniform float uBrightness;
+    uniform float uShadows;
+    uniform float uHighlights;
+    uniform float uBlur;
+    uniform float uBlurRadius;
+    uniform float uHalation;
+    uniform float uHalationRadius;
+    uniform float uHalationThreshold;
+    uniform vec3  uHalationTint;
     uniform vec3  uWarmth;
 
     varying vec2 vUv;
 
     float hash(vec2 p) {
       return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+
+    /**
+     * Ten taps on a golden-angle spiral.
+     *
+     * Even area coverage from very few samples, and no axis alignment for the eye
+     * to lock onto — a box or cross of the same cost leaves visible structure.
+     * The radius is corrected for aspect so the kernel stays circular on screen.
+     */
+    vec3 spiral(vec2 uv, float radius) {
+      vec3 total = vec3(0.0);
+      for (int i = 0; i < TAPS; i++) {
+        float t = (float(i) + 0.5) / float(TAPS);
+        float angle = float(i) * 2.39996323;
+        vec2 offset = vec2(cos(angle) / uAspect, sin(angle)) * sqrt(t) * radius;
+        total += texture2D(tDiffuse, uv + offset).rgb;
+      }
+      return total / float(TAPS);
     }
 
     void main() {
@@ -425,9 +514,28 @@ export const gradeShader = {
       color.g = texture2D(tDiffuse, vUv).g;
       color.b = texture2D(tDiffuse, vUv - offset).b;
 
-      // Warmth and saturation, then a gentle S-curve pivoting on mid grey.
-      color *= uWarmth;
-      float grey = dot(color, vec3(0.2126, 0.7152, 0.0722));
+      // Both of these branch on a uniform, so the whole draw takes one path and
+      // the taps cost nothing at all when the effect is dialled out.
+      if (uBlur > 0.0) {
+        color = mix(color, spiral(vUv, uBlurRadius), uBlur);
+      }
+
+      // Halation: light scattering back off the film base and re-exposing it, so
+      // it comes from the highlights, spreads wide, and arrives warm.
+      if (uHalation > 0.0) {
+        vec3 wide = spiral(vUv, uHalationRadius);
+        color += max(wide - uHalationThreshold, vec3(0.0)) * uHalationTint * uHalation;
+      }
+
+      color *= uWarmth * uBrightness;
+
+      // Tonal shaping before the S-curve, weighted by luminance so each end of
+      // the range can be moved without dragging the other with it.
+      float level = dot(color, LUMA);
+      color += color * uShadows * (1.0 - smoothstep(0.0, 0.45, level));
+      color -= color * uHighlights * smoothstep(0.5, 1.0, level);
+
+      float grey = dot(color, LUMA);
       color = mix(vec3(grey), color, uSaturation);
       color = clamp((color - 0.5) * uContrast + 0.5, 0.0, 1.0);
 

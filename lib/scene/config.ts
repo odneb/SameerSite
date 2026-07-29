@@ -75,6 +75,15 @@ export const ROOM = {
   grainScale: 5.5,
   /** Wrap term on the practicals, so unlit faces fall off rather than clip. */
   lightWrap: 0.34,
+  /**
+   * How much a light behind a surface amplifies its rim.
+   *
+   * With the practicals now shining toward the lens, most of the mesh we can see
+   * is its unlit side, and the edge is all the evidence of the light there is.
+   */
+  backlight: 1.6,
+  /** Overall opacity. Below 1 the mesh has to be blended rather than written. */
+  opacity: 1,
   /** Slow brightness breathing, so the surface is never quite inert. */
   breathAmount: 0.06,
   breathSpeed: 0.09,
@@ -116,6 +125,19 @@ export const POINTS = {
   /** Anisotropy range: splats are ellipses, not dots. */
   aspectMin: 0.68,
   aspectMax: 1.28,
+  /** Cloud opacity, before shimmer and the reveal. */
+  opacity: 0.9,
+  /** Gaussian tightness within a sprite, and extra emission in its core. */
+  falloff: 3.2,
+  glow: 0.16,
+  /**
+   * Master on the forward-scattering term — the light a splat throws toward the
+   * camera when a source is behind it. This is what makes the cloud read as lit
+   * air rather than as dust with a lamp pointed at it.
+   */
+  backscatter: 1,
+  /** Depth thinning, so the far side of the volume reads as further away. */
+  depthHaze: 0.3,
 } as const;
 
 export const SAMPLING = {
@@ -198,37 +220,76 @@ export const TURBULENCE = {
    * ring buffer can stack fourteen deep and throw the cloud out of frame.
    */
   limit: 1.2,
+  /**
+   * World z of the plane the pointer acts on. Sits just in front of the
+   * foreground figure, where the geometry puts him — impulses spawned much
+   * further back stir mostly empty air and the gesture goes unanswered.
+   */
+  planeDepth: 2.2,
 } as const;
 
 /**
- * Practical lights, positioned to match the plate: the lamp at frame left, the
- * blinded window at frame right, and a soft key on the foreground figure.
+ * Practical lights.
+ *
+ * The two that matter sit *behind* the subjects — the window deep at frame right
+ * and the lamp mid-depth at frame left — and shine forward, past the figures,
+ * toward the lens. That direction is the whole point: a light between the camera
+ * and the subject can only ever describe a surface, while a light behind it puts
+ * an edge on everything in front and turns the air itself into the brightest
+ * thing in the frame. Both are wide and soft, because the sources they stand for
+ * are a window and a shade, not bulbs.
+ *
+ * `backlight` is how much of that light scatters forward off a splat toward the
+ * camera, and `phase` how tightly that scattering hugs the light's direction —
+ * high values give a narrow shaft, low values a broad haze. `softness` is the
+ * exponent on the distance falloff: lower is a bigger, gentler source.
  */
 export const LIGHTS = [
   {
     name: "lamp",
-    position: [-4.9, 0.35, 1.1] as [number, number, number],
-    color: [1.0, 0.66, 0.31] as [number, number, number],
-    intensity: 1.7,
-    radius: 6.4,
+    position: [-4.6, 0.15, -2.3] as [number, number, number],
+    color: [1.0, 0.62, 0.28] as [number, number, number],
+    intensity: 1.35,
+    radius: 8.5,
+    softness: 1.5,
+    /** Broad, because a shade throws light in every direction. */
+    backlight: 0.22,
+    phase: 3.2,
     flickerAmount: 0.085,
     flickerSpeed: 2.3,
   },
   {
     name: "window",
-    position: [3.5, 1.5, -1.7] as [number, number, number],
-    color: [0.86, 0.78, 0.55] as [number, number, number],
-    intensity: 1.2,
-    radius: 7.2,
+    position: [4.7, 1.95, -4.7] as [number, number, number],
+    color: [0.88, 0.83, 0.64] as [number, number, number],
+    intensity: 1.25,
+    radius: 10.5,
+    softness: 1.35,
+    /**
+     * Tight, so it reads as shafts through the blinds. Worth knowing how little
+     * this needs: the source is far enough back that the whole frame is very
+     * nearly collinear with it, so the scattering term barely discriminates on
+     * angle and a value that looks sane on paper turns the frame into fog.
+     */
+    backlight: 0.2,
+    phase: 5.4,
     flickerAmount: 0.03,
     flickerSpeed: 0.55,
   },
   {
     name: "key",
-    position: [-1.5, 0.9, 2.6] as [number, number, number],
+    /**
+     * The one frontal light, kept weak. It exists only so the near side of the
+     * foreground figure is not pure silhouette; anything more and it competes
+     * with the two behind him, which is the opposite of the point.
+     */
+    position: [-1.2, 0.7, 3.2] as [number, number, number],
     color: [0.95, 0.85, 0.7] as [number, number, number],
-    intensity: 0.9,
-    radius: 5.6,
+    intensity: 0.5,
+    radius: 7,
+    softness: 2.0,
+    backlight: 0,
+    phase: 2,
     flickerAmount: 0.045,
     flickerSpeed: 0.9,
   },
@@ -243,7 +304,12 @@ export const RENDER = {
   exposure: 1.55,
   bloomStrength: 0.4,
   bloomRadius: 0.8,
-  bloomThreshold: 0.72,
+  /**
+   * Raised now the practicals shine toward the lens. Forward-scattered light puts
+   * a lot more of the frame near the top of the range, and at the old threshold
+   * the bloom took all of it.
+   */
+  bloomThreshold: 0.8,
   grain: 0.05,
   vignette: 0.5,
   aberration: 0.0022,
@@ -251,6 +317,23 @@ export const RENDER = {
   saturation: 1.16,
   contrast: 1.03,
   warmth: [1.035, 1.0, 0.93] as [number, number, number],
+  brightness: 1,
+  /** Signed. Positive lifts the shadows and pulls the highlights down. */
+  shadows: 0,
+  highlights: 0,
+  /** Overall softness, as a fraction mixed toward a blurred copy. */
+  blur: 0,
+  blurRadius: 0.0025,
+  /**
+   * Halation: the bloom around a bright edge on film, where light scatters back
+   * off the base and re-exposes the emulsion. Warm, wide, and weighted to the
+   * highlights — which is exactly where the backlights live, so this is most of
+   * what sells them as real sources rather than bright patches.
+   */
+  halation: 0.14,
+  halationRadius: 0.012,
+  halationThreshold: 0.55,
+  halationTint: [1.0, 0.42, 0.22] as [number, number, number],
   maxPixelRatio: 1.75,
   maxPixelRatioMobile: 1.3,
 } as const;

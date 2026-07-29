@@ -11,16 +11,14 @@
  */
 
 import {
-  CAMERA,
   DEPTH_BASE,
   DEPTH_REGIONS,
   MASK_REGIONS,
-  POINTS,
-  SAMPLING,
   WORLD,
   type DepthRegion,
 } from "./config";
 import { roomDepthToWorldZ, type RoomDepth } from "./room";
+import { buildTuning, type BuildTuning } from "./tuning";
 
 export type SplatBuffers = {
   count: number;
@@ -179,6 +177,11 @@ function srgbToLinear(channel: number) {
 export type PlateBuildOptions = {
   /** Splat budget. The builder gets within a few percent of this. */
   targetCount: number;
+  /**
+   * The build-time half of the tuning, snapshotted by the caller. Defaults to
+   * the live values, which are the config's until somebody moves a slider.
+   */
+  build?: BuildTuning;
   /** Optional depth plate; see readDepthPlate for the two accepted layouts. */
   depthData?: ImageData | null;
   /**
@@ -247,11 +250,12 @@ export function buildFromPlate(
 ): SplatBuffers {
   const { width: imgW, height: imgH, data } = plate;
   const random = mulberry32(options.seed ?? 0x5a3ee7);
+  const build = options.build ?? buildTuning();
 
-  const worldWidth = WORLD.width;
+  const worldWidth = build.worldWidth;
   const worldHeight = worldWidth * (imgH / imgW);
-  const worldDepth = WORLD.depth;
-  const worldCenter = WORLD.center;
+  const worldDepth = build.worldDepth;
+  const worldCenter = build.worldCenter;
   const roomDepth = options.roomDepth ?? null;
 
   /**
@@ -260,7 +264,7 @@ export function buildFromPlate(
    * reproduces the plate exactly — and any camera movement away from it reveals
    * true parallax rather than a stack of sliding cards.
    */
-  const lensDistance = worldHeight / 2 / Math.tan((CAMERA.fov * Math.PI) / 360);
+  const lensDistance = worldHeight / 2 / Math.tan((build.fov * Math.PI) / 360);
 
   const sourceMap = buildSourceMap(imgW, imgH, data);
   const luminance = new Float32Array(imgW * imgH);
@@ -271,7 +275,7 @@ export function buildFromPlate(
     const luma =
       (0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2]) / 255;
     luminance[index] = luma;
-    keepBudget += keepProbability(luma);
+    keepBudget += keepProbability(luma, build);
   }
 
   // Scale the per-pixel probability so we land on the requested budget. Above
@@ -296,7 +300,7 @@ export function buildFromPlate(
     for (let x = 0; x < imgW; x++) {
       const index = y * imgW + x;
       const pixelLuma = luminance[index];
-      const probability = keepProbability(pixelLuma) * perSampleScale;
+      const probability = keepProbability(pixelLuma, build) * perSampleScale;
       if (probability <= 0) continue;
 
       for (let s = 0; s < samplesPerPixel; s++) {
@@ -331,8 +335,8 @@ export function buildFromPlate(
         // roughening a shape that is already correct.
         const invented = 1 - measured * 0.8;
         z +=
-          ((pixelLuma - 0.5) * SAMPLING.reliefFromLuma * 0.1 +
-            (valueNoise(u * 7.3, v * 7.3) - 0.5) * SAMPLING.reliefNoise * 0.1) *
+          ((pixelLuma - 0.5) * build.reliefFromLuma * 0.1 +
+            (valueNoise(u * 7.3, v * 7.3) - 0.5) * build.reliefNoise * 0.1) *
           invented;
 
         // Foreshorten by depth so every layer projects back onto the plate.
@@ -354,16 +358,12 @@ export function buildFromPlate(
         color[p3 + 1] = grey + (g - grey) * 1.12;
         color[p3 + 2] = grey + (b - grey) * 1.12;
 
-        const jitter = 1 - POINTS.radiusJitter * 0.5 + random() * POINTS.radiusJitter;
+        const jitter = 1 - build.radiusJitter * 0.5 + random() * build.radiusJitter;
         // Foreshortened alongside position, so screen-space splat size stays
         // even across the depth of the volume.
         const radius =
-          POINTS.baseRadius *
-          jitter *
-          perspective *
-          (1 + pixelLuma * POINTS.radiusLumaGain);
-        const aspect =
-          POINTS.aspectMin + random() * (POINTS.aspectMax - POINTS.aspectMin);
+          build.baseRadius * jitter * perspective * (1 + pixelLuma * build.radiusLumaGain);
+        const aspect = build.aspectMin + random() * (build.aspectMax - build.aspectMin);
         const p2 = count * 2;
         scale[p2] = radius;
         scale[p2 + 1] = radius * aspect;
@@ -384,8 +384,9 @@ export function buildFromPlate(
     { position, color, scale, rotation, seed, luma },
     count,
     capacity,
-    Math.floor(options.targetCount * POINTS.dustRatio),
+    Math.floor(options.targetCount * build.dustRatio),
     { worldWidth, worldHeight, worldDepth, worldCenter, lensDistance },
+    build,
     random,
   );
 
@@ -401,10 +402,10 @@ export function buildFromPlate(
   };
 }
 
-function keepProbability(pixelLuma: number) {
-  if (pixelLuma >= SAMPLING.lumaKeepAlways) return 1;
-  const t = smoothstep(SAMPLING.lumaFloor, 1, pixelLuma);
-  return Math.pow(t, SAMPLING.lumaBias);
+function keepProbability(pixelLuma: number, build: BuildTuning) {
+  if (pixelLuma >= build.lumaKeepAlways) return 1;
+  const t = smoothstep(build.lumaFloor, 1, pixelLuma);
+  return Math.pow(t, build.lumaBias);
 }
 
 type MutableBuffers = {
@@ -432,6 +433,7 @@ function addDust(
     worldCenter: number;
     lensDistance: number;
   },
+  build: BuildTuning,
   random: () => number,
 ) {
   let count = startCount;
@@ -454,7 +456,7 @@ function addDust(
     buffers.color[p3 + 1] = 0.075 * warmth;
     buffers.color[p3 + 2] = 0.042 * warmth;
 
-    const radius = POINTS.baseRadius * perspective * (0.4 + random() * 0.9);
+    const radius = build.baseRadius * perspective * (0.4 + random() * 0.9);
     const p2 = count * 2;
     buffers.scale[p2] = radius;
     buffers.scale[p2 + 1] = radius * (0.8 + random() * 0.5);

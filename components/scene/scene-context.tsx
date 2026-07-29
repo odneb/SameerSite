@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { TuningPanel } from "@/components/scene/tuning-panel";
 import { useHydrated } from "@/lib/hydrated";
 import { SplatField } from "@/lib/scene/splat-field";
 
@@ -19,12 +20,21 @@ type SceneApi = {
   focus: (u: number | null, v?: number, push?: number) => void;
   /** Disturb the field deliberately, e.g. on a click. */
   pulse: (strength?: number) => void;
+  /**
+   * Tear the field down and build it again. Needed for anything baked into the
+   * splat buffers — the lens, the budget, the sampling curves.
+   */
+  rebuild: () => void;
+  /** Stop the field tracking the pointer, e.g. while it is over a panel. */
+  suspendPointer: (suspended: boolean) => void;
   ready: boolean;
 };
 
 const SceneContext = createContext<SceneApi>({
   focus: () => {},
   pulse: () => {},
+  rebuild: () => {},
+  suspendPointer: () => {},
   ready: false,
 });
 
@@ -61,6 +71,7 @@ export function SceneStage({
   const fieldRef = useRef<SplatField | null>(null);
   const hydrated = useHydrated();
   const [ready, setReady] = useState(false);
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -132,7 +143,7 @@ export function SceneStage({
       fieldRef.current = null;
       setReady(false);
     };
-  }, [plateUrl, depthUrl, splatUrl, roomUrl]);
+  }, [plateUrl, depthUrl, splatUrl, roomUrl, generation]);
 
   const focus = useCallback((u: number | null, v = 0.5, push = 0) => {
     fieldRef.current?.setFocus(u, v, push);
@@ -142,7 +153,18 @@ export function SceneStage({
     fieldRef.current?.pulse(strength);
   }, []);
 
-  const api = useMemo<SceneApi>(() => ({ focus, pulse, ready }), [focus, pulse, ready]);
+  const rebuild = useCallback(() => {
+    setGeneration((value) => value + 1);
+  }, []);
+
+  const suspendPointer = useCallback((suspended: boolean) => {
+    fieldRef.current?.setPointerSuspended(suspended);
+  }, []);
+
+  const api = useMemo<SceneApi>(
+    () => ({ focus, pulse, rebuild, suspendPointer, ready }),
+    [focus, pulse, rebuild, suspendPointer, ready],
+  );
 
   return (
     <SceneContext.Provider value={api}>
@@ -166,6 +188,7 @@ export function SceneStage({
       </div>
       {hydrated && !ready && <SceneLoader />}
       {children}
+      <TuningPanel />
     </SceneContext.Provider>
   );
 }
