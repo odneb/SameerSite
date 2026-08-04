@@ -60,6 +60,50 @@ type SceneStageProps = {
   children: ReactNode;
 };
 
+type PlainImageStageProps = {
+  plateUrl: string;
+  children: ReactNode;
+};
+
+/** Static hero plate — no WebGL, no splats. */
+export function PlainImageStage({ plateUrl, children }: PlainImageStageProps) {
+  const api = useMemo<SceneApi>(
+    () => ({
+      focus: () => {},
+      pulse: () => {},
+      rebuild: () => {},
+      suspendPointer: () => {},
+      ready: true,
+    }),
+    [],
+  );
+
+  return (
+    <SceneContext.Provider value={api}>
+      <div
+        className="bg-void pointer-events-none fixed inset-0 z-0 overflow-hidden"
+        // Keep the plate out of the page's dark color-scheme so the browser
+        // doesn't regrade it.
+        style={{ colorScheme: "only light" }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          aria-hidden
+          alt=""
+          src={plateUrl}
+          className="absolute inset-0 h-full w-full object-cover object-center"
+          style={{
+            filter: "none",
+            mixBlendMode: "normal",
+            opacity: 1,
+          }}
+        />
+      </div>
+      {children}
+    </SceneContext.Provider>
+  );
+}
+
 export function SceneStage({
   plateUrl,
   depthUrl = null,
@@ -173,8 +217,11 @@ export function SceneStage({
             standing in permanently if WebGL is unavailable. */}
         <div
           aria-hidden
-          className="animate-plate-drift absolute inset-0 bg-cover bg-center opacity-70 blur-[2px]"
-          style={{ backgroundImage: `url(${plateUrl})` }}
+          className="animate-plate-drift absolute inset-0 bg-cover bg-center transition-opacity duration-[1800ms]"
+          style={{
+            backgroundImage: `url(${plateUrl})`,
+            opacity: ready ? 0 : 0.8,
+          }}
         />
         <canvas
           ref={canvasRef}

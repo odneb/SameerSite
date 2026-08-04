@@ -210,7 +210,7 @@ function lookAtView(eye, target, up = [0, 1, 0]) {
  * triangle in a 917k-tri mesh lands sub-pixel at these resolutions, so this is
  * effectively a scatter over ~1M points.
  */
-function rasterize(mesh, camera, width, height) {
+function rasterize(mesh, camera, width, height, triangleStride = 1) {
   const { position, uv, normal, index } = mesh;
   const viewProjection = multiply(camera.projection, camera.view);
 
@@ -245,7 +245,7 @@ function rasterize(mesh, camera, width, height) {
 
   const triangles = index ? index.length / 3 : vertexCount / 3;
 
-  for (let t = 0; t < triangles; t++) {
+  for (let t = 0; t < triangles; t += triangleStride) {
     const i0 = index ? index[t * 3] : t * 3;
     const i1 = index ? index[t * 3 + 1] : t * 3 + 1;
     const i2 = index ? index[t * 3 + 2] : t * 3 + 2;
@@ -400,30 +400,33 @@ function makeCamera(box, { yaw, pitch, fov, aspect, distanceScale, targetY }) {
 /* --------------------------------------------------------------- landmarks */
 
 /**
- * Where the mesh's recognisable features sit, and where they sit on the plate.
- *
- * The plate is a painting, not a render, so this is a best-fit rather than a
- * solve: three correspondences are enough to pin yaw, pitch, distance and the
- * look-at point without over-constraining a camera that can never match
- * exactly.
+ * Hollywood office — three correspondences that pin the solve. Keep the count
+ * low; more points with a bad mesh-to-plate pairing only over-constrains noise.
  */
 const LANDMARKS = [
   {
-    // Top of the hair down to the brow. Unmistakable in both.
-    name: "man's crown",
-    select: (p) => p[1] > 0.42 && p[0] < -0.15,
-    target: [0.272, 0.185],
+    name: "left shutter",
+    select: (p) => p[0] < -0.45 && p[0] > -0.78 && p[1] > 0.05 && p[1] < 0.45,
+    target: [0.115, 0.42],
+    weight: 4,
   },
   {
-    // Chest and tie, below the jaw and above the bedding.
-    name: "man's chest",
-    select: (p) => p[0] > -0.78 && p[0] < -0.15 && p[1] > -0.05 && p[1] < 0.25,
-    target: [0.271, 0.5],
+    name: "right shutter",
+    select: (p) => p[0] > 0.45 && p[1] > 0.05 && p[1] < 0.45,
+    target: [0.885, 0.42],
+    weight: 4,
   },
   {
-    name: "woman's head",
-    select: (p) => p[0] > 0.55 && p[1] > 0.02,
-    target: [0.815, 0.34],
+    name: "corkboard top",
+    select: (p) => p[0] < -0.05 && p[0] > -0.55 && p[1] > 0.35,
+    target: [0.19, 0.155],
+    weight: 1,
+  },
+  {
+    name: "desk front",
+    select: (p) => p[0] > -0.78 && p[0] < -0.05 && p[1] > -0.05 && p[1] < 0.25,
+    target: [0.345, 0.585],
+    weight: 1,
   },
 ];
 
@@ -458,6 +461,7 @@ function centroids(position) {
       name: LANDMARKS[index].name,
       point: [0, 1, 2].map((a) => (box.min[a] + box.max[a]) / 2),
       target: LANDMARKS[index].target,
+      weight: LANDMARKS[index].weight ?? 1,
       count: box.n,
     };
   });
@@ -500,16 +504,19 @@ function fitError(box, params, marks, fov, aspect) {
   const camera = cameraFromParams(box, params, fov, aspect);
   const matrix = multiply(camera.projection, camera.view);
   let error = 0;
+  let weightSum = 0;
   for (const mark of marks) {
     const uv = projectToUv(matrix, mark.point);
     if (!uv) return Infinity;
-    error += (uv[0] - mark.target[0]) ** 2 + (uv[1] - mark.target[1]) ** 2;
+    const w = mark.weight ?? 1;
+    error += w * ((uv[0] - mark.target[0]) ** 2 + (uv[1] - mark.target[1]) ** 2);
+    weightSum += w;
   }
-  return error;
+  return error / Math.max(weightSum, 1);
 }
 
 /** Coarse random search then shrinking local refinement. Deterministic seed. */
-function fitCamera(box, marks, fov, aspect) {
+function fitCamera(box, marks, fov, aspect, randomSamples = 60000, localPasses = 900) {
   let seed = 0x9e3779b9;
   const random = () => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
@@ -527,7 +534,7 @@ function fitCamera(box, marks, fov, aspect) {
     targetY: [-0.6, 0.6],
   };
 
-  for (let i = 0; i < 60000; i++) {
+  for (let i = 0; i < randomSamples; i++) {
     const candidate = {
       yaw: ranges.yaw[0] + random() * (ranges.yaw[1] - ranges.yaw[0]),
       pitch: ranges.pitch[0] + random() * (ranges.pitch[1] - ranges.pitch[0]),
@@ -543,7 +550,7 @@ function fitCamera(box, marks, fov, aspect) {
   }
 
   let step = 0.25;
-  for (let pass = 0; pass < 900; pass++) {
+  for (let pass = 0; pass < localPasses; pass++) {
     let improved = false;
     for (const key of Object.keys(best)) {
       for (const direction of [1, -1]) {
@@ -561,7 +568,147 @@ function fitCamera(box, marks, fov, aspect) {
     if (step < 1e-6) break;
   }
 
-  return { params: best, error: bestError, rms: Math.sqrt(bestError / marks.length) };
+  return { params: best, error: bestError, rms: Math.sqrt(bestError) };
+}
+
+/** Sweep vertical FOV — with only a few landmarks, scale and FOV are coupled. */
+function fitCameraWithFov(box, marks, aspect, fovHint = 32) {
+  let coarseFov = fovHint;
+  let coarseError = Infinity;
+
+  for (let fov = 26; fov <= 50; fov += 2) {
+    const result = fitCamera(box, marks, fov, aspect, 12000, 400);
+    if (result.error < coarseError) {
+      coarseError = result.error;
+      coarseFov = fov;
+    }
+  }
+
+  let best = { params: null, fov: coarseFov, error: Infinity, rms: Infinity };
+  for (let fov = coarseFov - 2.5; fov <= coarseFov + 2.5; fov += 0.25) {
+    const result = fitCamera(box, marks, fov, aspect);
+    if (result.error < best.error) {
+      best = { params: result.params, fov, error: result.error, rms: result.rms };
+    }
+  }
+
+  return best;
+}
+
+function plateSize(args) {
+  const width = Number(args.width ?? 1024);
+  const height = Number(args.height ?? Math.round(width / (16 / 9)));
+  return { width, height, aspect: width / height };
+}
+
+/** Compare a low-res render against the plate luminance where the mesh hits. */
+function renderScore(mesh, box, params, fov, aspect, plate, width, height, triangleStride = 1) {
+  const camera = cameraFromParams(box, params, fov, aspect);
+  const raster = rasterize(mesh, camera, width, height, triangleStride);
+  const render = albedoImage(raster, mesh.albedo);
+  let error = 0;
+  let count = 0;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!raster.hit[i]) continue;
+      const px = Math.min(plate.width - 1, ((x / width) * plate.width) | 0);
+      const py = Math.min(plate.height - 1, ((y / height) * plate.height) | 0);
+      const q = (py * plate.width + px) * 4;
+      const p = i * 4;
+      const pluma =
+        (0.2126 * plate.data[q] + 0.7152 * plate.data[q + 1] + 0.0722 * plate.data[q + 2]) /
+        255;
+      const rluma =
+        (0.2126 * render[p] + 0.7152 * render[p + 1] + 0.0722 * render[p + 2]) / 255;
+      error += (pluma - rluma) ** 2;
+      count++;
+    }
+  }
+
+  return count ? error / count : Infinity;
+}
+
+/** Refine landmark fit by matching overall render tone, and sweep FOV. */
+function refineCamera(mesh, box, marks, plate, start, fovStart, aspect, width, height) {
+  let bestFov = fovStart;
+  let best = { ...start };
+  let bestError = Infinity;
+
+  const sampleWidth = 224;
+  const sampleHeight = Math.max(64, Math.round(sampleWidth / aspect));
+  const stride = 12;
+
+  for (let fov = fovStart - 4; fov <= fovStart + 4; fov += 2) {
+    const landmark = fitCamera(box, marks, fov, aspect).params;
+    for (const distScale of [0.9, 1, 1.1]) {
+      let candidate = { ...landmark, distance: landmark.distance * distScale };
+      let error = renderScore(
+        mesh,
+        box,
+        candidate,
+        fov,
+        aspect,
+        plate,
+        sampleWidth,
+        sampleHeight,
+        stride,
+      );
+      if (error < bestError) {
+        bestError = error;
+        best = candidate;
+        bestFov = fov;
+      }
+
+      const steps = [
+        { key: "yaw", delta: 0.015 },
+        { key: "pitch", delta: 0.012 },
+        { key: "distance", delta: 0.08 },
+        { key: "targetX", delta: 0.02 },
+        { key: "targetY", delta: 0.02 },
+      ];
+
+      for (let pass = 0; pass < 24; pass++) {
+        let improved = false;
+        for (const step of steps) {
+          for (const direction of [1, -1]) {
+            const trial = { ...candidate, [step.key]: candidate[step.key] + direction * step.delta };
+            const trialError = renderScore(
+              mesh,
+              box,
+              trial,
+              fov,
+              aspect,
+              plate,
+              sampleWidth,
+              sampleHeight,
+              stride,
+            );
+            if (trialError < error) {
+              error = trialError;
+              candidate = trial;
+              improved = true;
+              if (error < bestError) {
+                bestError = error;
+                best = candidate;
+                bestFov = fov;
+              }
+            }
+          }
+        }
+        if (!improved) break;
+      }
+    }
+  }
+
+  const landmarkError = fitError(box, best, marks, bestFov, aspect);
+  return {
+    params: best,
+    fov: bestFov,
+    renderError: bestError,
+    rms: Math.sqrt(landmarkError / marks.length),
+  };
 }
 
 /* -------------------------------------------------------------------- main */
@@ -799,8 +946,9 @@ function loadPlate(file) {
 }
 
 function fit(mesh, box, args) {
+  const { width, height, aspect } = plateSize(args);
   const fov = Number(args.fov ?? 32);
-  const aspect = Number(args.aspect ?? 16 / 9);
+  const plate = loadPlate(args.plate ?? "public/scene/hero-plate.jpg");
   const marks = centroids(mesh.position);
 
   for (const mark of marks) {
@@ -809,13 +957,21 @@ function fit(mesh, box, args) {
     );
   }
 
-  const result = fitCamera(box, marks, fov, aspect);
-  const p = result.params;
+  const landmark = fitCameraWithFov(box, marks, aspect, fov);
+  const useRefine = args.refine === "true";
+  const refined = useRefine
+    ? refineCamera(mesh, box, marks, plate, landmark.params, landmark.fov, aspect, width, height)
+    : { params: landmark.params, fov: landmark.fov, renderError: 0, rms: landmark.rms };
+  const p = refined.params;
+  const fitFov = refined.fov;
   console.log(
-    `\nfit rms=${result.rms.toFixed(4)} uv\n  --yaw ${p.yaw.toFixed(4)} --pitch ${p.pitch.toFixed(4)} --distance ${p.distance.toFixed(4)} --targetX ${p.targetX.toFixed(4)} --targetY ${p.targetY.toFixed(4)}`,
+    `\nlandmark rms=${landmark.rms.toFixed(4)}  render mse=${refined.renderError.toFixed(5)}  fov=${fitFov.toFixed(1)}`,
+  );
+  console.log(
+    `  --fov ${fitFov.toFixed(2)} --yaw ${p.yaw.toFixed(4)} --pitch ${p.pitch.toFixed(4)} --distance ${p.distance.toFixed(4)} --targetX ${p.targetX.toFixed(4)} --targetY ${p.targetY.toFixed(4)}`,
   );
 
-  const camera = cameraFromParams(box, p, fov, aspect);
+  const camera = cameraFromParams(box, p, fitFov, aspect);
   const matrix = multiply(camera.projection, camera.view);
   for (const mark of marks) {
     const uv = projectToUv(matrix, mark.point);
@@ -824,31 +980,45 @@ function fit(mesh, box, args) {
     );
   }
 
-  const width = Number(args.width ?? 1024);
-  const height = Math.round(width / aspect);
-  const raster = rasterize(mesh, cameraFromParams(box, p, fov, width / height), width, height);
-  const plate = loadPlate(args.plate ?? "public/scene/hero-plate.jpg");
+  const raster = rasterize(mesh, cameraFromParams(box, p, fitFov, aspect), width, height);
   const out = args.out ?? "scripts/out/overlay.png";
   writePng(
     out,
     width,
     height,
-    overlayImage(raster, mesh, plate, marks, multiply(cameraFromParams(box, p, fov, width / height).projection, cameraFromParams(box, p, fov, width / height).view)),
+    overlayImage(
+      raster,
+      mesh,
+      plate,
+      marks,
+      multiply(
+        cameraFromParams(box, p, fitFov, aspect).projection,
+        cameraFromParams(box, p, fitFov, aspect).view,
+      ),
+    ),
   );
   console.log(`\nwrote ${out}`);
 }
 
 function bake(mesh, box, args) {
-  const width = Number(args.width ?? 1280);
-  const height = Number(args.height ?? 720);
+  const { width, height, aspect } = plateSize(args);
   const fov = Number(args.fov ?? 32);
+  const plate = loadPlate(args.plate ?? "public/scene/hero-plate.jpg");
   const marks = centroids(mesh.position);
-  const fitted = fitCamera(box, marks, fov, 16 / 9).params;
-  const params = paramsFromArgs(args, fitted);
+  const landmark = fitCameraWithFov(box, marks, aspect, fov);
+  const useRefine = args.refine === "true";
+  const refined = useRefine
+    ? refineCamera(mesh, box, marks, plate, landmark.params, landmark.fov, aspect, width, height)
+    : { params: landmark.params, fov: landmark.fov, renderError: 0, rms: landmark.rms };
+  const fitFov = refined.fov;
+  const params = paramsFromArgs(args, refined.params);
   console.log(
-    `camera --yaw ${params.yaw.toFixed(4)} --pitch ${params.pitch.toFixed(4)} --distance ${params.distance.toFixed(4)} --targetX ${params.targetX.toFixed(4)} --targetY ${params.targetY.toFixed(4)}`,
+    `camera --fov ${fitFov.toFixed(2)} --yaw ${params.yaw.toFixed(4)} --pitch ${params.pitch.toFixed(4)} --distance ${params.distance.toFixed(4)} --targetX ${params.targetX.toFixed(4)} --targetY ${params.targetY.toFixed(4)}`,
   );
-  const camera = cameraFromParams(box, params, fov, width / height);
+  console.log(
+    `landmark rms=${landmark.rms.toFixed(4)}  render mse=${refined.renderError.toFixed(5)}`,
+  );
+  const camera = cameraFromParams(box, params, fitFov, aspect);
 
   const raster = rasterize(mesh, camera, width, height);
   const range = depthRange(raster.depth, raster.hit);
@@ -908,7 +1078,7 @@ function bake(mesh, box, args) {
   // lines up behind the splats under the same lens.
   const meta = {
     source: path.basename(args.glb),
-    camera: { fov, ...params, aspect: width / height },
+    camera: { fov: fitFov, ...params, aspect },
     view: Array.from(camera.view),
     depth: { near: range.near, far: range.far, span, coverage: range.coverage },
     bounds: { min: box.min, max: box.max, size: box.size },

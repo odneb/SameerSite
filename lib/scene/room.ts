@@ -101,22 +101,9 @@ export type RoomAdjust = {
  * about the world origin: the solve has already put the bake's own target there,
  * so the origin is the natural thing to rotate the room around.
  */
-export function roomPlacement(
-  transform: RoomTransform,
-  lensDistance: number,
-  adjust?: RoomAdjust,
-) {
-  const scale = lensDistance / Math.max(transform.camera.distance, 1e-6);
-  const view = new THREE.Matrix4().fromArray(transform.view);
-  const model = new THREE.Matrix4().makeScale(scale, scale, scale).multiply(view);
-  const placed = new THREE.Matrix4()
-    .makeTranslation(0, 0, lensDistance)
-    .multiply(model);
-
-  if (!adjust) return placed;
-
+export function roomManualMatrix(adjust: RoomAdjust) {
   const degrees = Math.PI / 180;
-  const manual = new THREE.Matrix4().compose(
+  return new THREE.Matrix4().compose(
     new THREE.Vector3(adjust.offsetX, adjust.offsetY, adjust.offsetZ),
     new THREE.Quaternion().setFromEuler(
       new THREE.Euler(
@@ -128,8 +115,46 @@ export function roomPlacement(
     ),
     new THREE.Vector3(adjust.scale, adjust.scale, adjust.scale),
   );
+}
 
-  return manual.multiply(placed);
+/** Bake solve only — no manual offsets from the tuning panel. */
+export function roomBasePlacement(transform: RoomTransform, lensDistance: number) {
+  const scale = lensDistance / Math.max(transform.camera.distance, 1e-6);
+  const view = new THREE.Matrix4().fromArray(transform.view);
+  const model = new THREE.Matrix4().makeScale(scale, scale, scale).multiply(view);
+  return new THREE.Matrix4()
+    .makeTranslation(0, 0, lensDistance)
+    .multiply(model);
+}
+
+export function roomAdjustFromTuning(values: {
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
+  rotateX: number;
+  rotateY: number;
+  rotateZ: number;
+  scale: number;
+}): RoomAdjust {
+  return {
+    offsetX: values.offsetX,
+    offsetY: values.offsetY,
+    offsetZ: values.offsetZ,
+    rotateX: values.rotateX,
+    rotateY: values.rotateY,
+    rotateZ: values.rotateZ,
+    scale: values.scale,
+  };
+}
+
+export function roomPlacement(
+  transform: RoomTransform,
+  lensDistance: number,
+  adjust?: RoomAdjust,
+) {
+  const base = roomBasePlacement(transform, lensDistance);
+  if (!adjust) return base;
+  return roomManualMatrix(adjust).multiply(base);
 }
 
 let loader: GLTFLoader | null = null;
@@ -154,8 +179,8 @@ export type RoomOptions = {
 export type Room = {
   object: THREE.Object3D;
   material: THREE.ShaderMaterial;
-  /** Re-solve the placement, e.g. after the lens or a manual offset moves. */
-  place: (lensDistance: number, adjust?: RoomAdjust) => void;
+  /** Re-solve the base bake placement when the lens moves. */
+  place: (lensDistance: number) => void;
   dispose: () => void;
 };
 
@@ -223,7 +248,7 @@ export async function loadRoom(options: RoomOptions): Promise<Room> {
     transparent: false,
     depthTest: true,
     depthWrite: true,
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
   });
   disposables.push(material);
 
@@ -247,10 +272,8 @@ export async function loadRoom(options: RoomOptions): Promise<Room> {
   return {
     object: group,
     material,
-    place: (lensDistance, adjust) => {
-      group.matrix.copy(roomPlacement(options.transform, lensDistance, adjust));
-      // The group's world matrix is composed by hand, so three has to be told
-      // that the children hanging off it are now stale.
+    place: (lensDistance) => {
+      group.matrix.copy(roomBasePlacement(options.transform, lensDistance));
       group.updateMatrixWorld(true);
     },
     dispose: () => {

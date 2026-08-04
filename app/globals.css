@@ -16,6 +16,21 @@
   --animate-plate-drift: plate-drift 38s ease-in-out infinite alternate;
 }
 
+/* /v2 — cool teal exterior plate. Ink needs to read on dark slate, not sepia dust. */
+.theme-v2 {
+  --color-void: #0a1010;
+  --color-ink: #ebe6dc;
+  --color-ink-dim: #b7b2a6;
+  --color-ink-faint: #7d7a72;
+  --color-ember: #e0c08a;
+  --color-hairline: rgba(235, 230, 220, 0.18);
+}
+
+.theme-v2 .plate-type,
+.theme-v2 .plate-type :is(button, p, span, a) {
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.65), 0 0 2px rgba(0, 0, 0, 0.85);
+}
+
 @layer base {
   html {
     background-color: var(--color-void);

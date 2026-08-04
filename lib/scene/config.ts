@@ -25,7 +25,7 @@ export const WORLD = {
    * forward of the origin, so the authored range is biased back to sit behind
    * it rather than straddling it.
    */
-  center: -1.9,
+  center: 0,
 } as const;
 
 /**
@@ -92,7 +92,7 @@ export const ROOM = {
 } as const;
 
 export const CAMERA = {
-  fov: 32,
+  fov: 23.5,
   near: 0.1,
   far: 120,
   /**
@@ -112,32 +112,32 @@ export const CAMERA = {
 
 export const POINTS = {
   /** Target splat counts by device tier. */
-  countDesktop: 720_000,
-  countTablet: 340_000,
-  countMobile: 150_000,
+  countDesktop: 1_450_000,
+  countTablet: 520_000,
+  countMobile: 220_000,
   /** Atmospheric dust suspended in the volume, on top of the plate splats. */
-  dustRatio: 0.012,
+  dustRatio: 0.001,
   /** Base splat radius in world units before per-point jitter. */
-  baseRadius: 0.0145,
-  radiusJitter: 0.5,
+  baseRadius: 0.0225,
+  radiusJitter: 0.1,
   /** Bright pixels render slightly larger, which reads as bloom-adjacent. */
-  radiusLumaGain: 0.3,
+  radiusLumaGain: 0.08,
   /** Anisotropy range: splats are ellipses, not dots. */
-  aspectMin: 0.68,
-  aspectMax: 1.28,
+  aspectMin: 0.88,
+  aspectMax: 1.08,
   /** Cloud opacity, before shimmer and the reveal. */
-  opacity: 0.9,
-  /** Gaussian tightness within a sprite, and extra emission in its core. */
-  falloff: 3.2,
-  glow: 0.16,
+  opacity: 1,
+  /** Gaussian tightness within a sprite — lower = softer overlap, more resolve. */
+  falloff: 1.55,
+  glow: 0.04,
   /**
    * Master on the forward-scattering term — the light a splat throws toward the
    * camera when a source is behind it. This is what makes the cloud read as lit
    * air rather than as dust with a lamp pointed at it.
    */
-  backscatter: 1,
+  backscatter: 0.38,
   /** Depth thinning, so the far side of the volume reads as further away. */
-  depthHaze: 0.3,
+  depthHaze: 0.05,
 } as const;
 
 export const SAMPLING = {
@@ -146,32 +146,32 @@ export const SAMPLING = {
    * entirely, taking the composition with them; the plate should dissolve into
    * the dark, not get cut out of it.
    */
-  lumaFloor: 0.005,
+  lumaFloor: 0.001,
   /**
    * Compresses the density curve. Near 1 the lit areas get all the splats and
    * the shadows vanish; low values keep enough motes in the dark for the
-   * jacket, the wall and the bedding to hold their shape.
+   * palms, walls and door frame to hold their shape.
    */
-  lumaBias: 0.35,
+  lumaBias: 0.1,
   /** Never drop a pixel this bright, regardless of the density budget. */
-  lumaKeepAlways: 0.78,
+  lumaKeepAlways: 0.36,
   /** Micro-relief pulled from luminance, in world units. */
-  reliefFromLuma: 0.42,
+  reliefFromLuma: 0.04,
   /** Low-frequency organic wobble in the depth field, in world units. */
-  reliefNoise: 0.26,
+  reliefNoise: 0.02,
 } as const;
 
 export const MOTION = {
   /** The idle "swim". Amplitude is in world units; keep it under a splat width. */
-  swimAmplitude: 0.055,
-  swimSpeed: 0.16,
+  swimAmplitude: 0.008,
+  swimSpeed: 0.08,
   /** Shimmer modulates alpha and size, not position. */
-  shimmerAmount: 0.19,
-  shimmerSpeed: 1.2,
+  shimmerAmount: 0,
+  shimmerSpeed: 0,
   /** A slow specular band travelling across the cloud. */
-  glintSpeed: 0.17,
-  glintWidth: 0.1,
-  glintStrength: 0.6,
+  glintSpeed: 0,
+  glintWidth: 0,
+  glintStrength: 0,
 } as const;
 
 /**
@@ -225,73 +225,64 @@ export const TURBULENCE = {
    * foreground figure, where the geometry puts him — impulses spawned much
    * further back stir mostly empty air and the gesture goes unanswered.
    */
-  planeDepth: 2.2,
+  planeDepth: 1.5,
 } as const;
 
 /**
- * Practical lights.
+ * Practical lights for the Hollywood office.
  *
- * The two that matter sit *behind* the subjects — the window deep at frame right
- * and the lamp mid-depth at frame left — and shine forward, past the figures,
- * toward the lens. That direction is the whole point: a light between the camera
- * and the subject can only ever describe a surface, while a light behind it puts
- * an edge on everything in front and turns the air itself into the brightest
- * thing in the frame. Both are wide and soft, because the sources they stand for
- * are a window and a shade, not bulbs.
- *
- * `backlight` is how much of that light scatters forward off a splat toward the
- * camera, and `phase` how tightly that scattering hugs the light's direction —
- * high values give a narrow shaft, low values a broad haze. `softness` is the
- * exponent on the distance falloff: lower is a bigger, gentler source.
+ * The window and the hills sit behind everything, shining toward the lens through
+ * the doorway. The desk lamp and ceiling fan are mid-room. A weak cool fill from
+ * the foreground keeps the teal walls from clipping to black.
  */
 export const LIGHTS = [
   {
-    name: "lamp",
-    position: [-4.6, 0.15, -2.3] as [number, number, number],
-    color: [1.0, 0.62, 0.28] as [number, number, number],
-    intensity: 1.35,
-    radius: 8.5,
-    softness: 1.5,
-    /** Broad, because a shade throws light in every direction. */
-    backlight: 0.22,
-    phase: 3.2,
-    flickerAmount: 0.085,
-    flickerSpeed: 2.3,
-  },
-  {
     name: "window",
-    position: [4.7, 1.95, -4.7] as [number, number, number],
-    color: [0.88, 0.83, 0.64] as [number, number, number],
-    intensity: 1.25,
-    radius: 10.5,
-    softness: 1.35,
-    /**
-     * Tight, so it reads as shafts through the blinds. Worth knowing how little
-     * this needs: the source is far enough back that the whole frame is very
-     * nearly collinear with it, so the scattering term barely discriminates on
-     * angle and a value that looks sane on paper turns the frame into fog.
-     */
-    backlight: 0.2,
-    phase: 5.4,
-    flickerAmount: 0.03,
-    flickerSpeed: 0.55,
+    position: [0.1, 0.55, -5.2] as [number, number, number],
+    color: [1.0, 0.72, 0.48] as [number, number, number],
+    intensity: 1.6,
+    radius: 14,
+    softness: 1.25,
+    backlight: 0.28,
+    phase: 4.8,
+    flickerAmount: 0.02,
+    flickerSpeed: 0.4,
   },
   {
-    name: "key",
-    /**
-     * The one frontal light, kept weak. It exists only so the near side of the
-     * foreground figure is not pure silhouette; anything more and it competes
-     * with the two behind him, which is the opposite of the point.
-     */
-    position: [-1.2, 0.7, 3.2] as [number, number, number],
-    color: [0.95, 0.85, 0.7] as [number, number, number],
-    intensity: 0.5,
-    radius: 7,
-    softness: 2.0,
+    name: "desk lamp",
+    position: [-1.4, -0.15, -2.0] as [number, number, number],
+    color: [0.72, 0.88, 0.55] as [number, number, number],
+    intensity: 1.1,
+    radius: 6.5,
+    softness: 1.6,
+    backlight: 0.12,
+    phase: 3.0,
+    flickerAmount: 0.06,
+    flickerSpeed: 1.8,
+  },
+  {
+    name: "ceiling fan",
+    position: [0.0, 1.15, -2.8] as [number, number, number],
+    color: [1.0, 0.82, 0.62] as [number, number, number],
+    intensity: 0.95,
+    radius: 8.5,
+    softness: 1.4,
+    backlight: 0.18,
+    phase: 3.6,
+    flickerAmount: 0.04,
+    flickerSpeed: 0.7,
+  },
+  {
+    name: "doorway fill",
+    position: [0.0, 0.0, 3.8] as [number, number, number],
+    color: [0.55, 0.72, 0.78] as [number, number, number],
+    intensity: 0.35,
+    radius: 9,
+    softness: 2.2,
     backlight: 0,
     phase: 2,
-    flickerAmount: 0.045,
-    flickerSpeed: 0.9,
+    flickerAmount: 0,
+    flickerSpeed: 0,
   },
 ] as const;
 
@@ -300,27 +291,27 @@ export const RENDER = {
    * Kept low deliberately. The room should be lit by the practicals below, not
    * by a flat lift — ambient much above this puts an olive veil over the frame.
    */
-  ambient: 0.4,
-  exposure: 1.55,
-  bloomStrength: 0.4,
-  bloomRadius: 0.8,
+  ambient: 0.55,
+  exposure: 1.85,
+  bloomStrength: 0.26,
+  bloomRadius: 0.7,
   /**
    * Raised now the practicals shine toward the lens. Forward-scattered light puts
    * a lot more of the frame near the top of the range, and at the old threshold
    * the bloom took all of it.
    */
-  bloomThreshold: 0.8,
-  grain: 0.05,
-  vignette: 0.5,
-  aberration: 0.0022,
+  bloomThreshold: 0.86,
+  grain: 0.012,
+  vignette: 0.24,
+  aberration: 0.0012,
   /** Final grade. ACES tonemapping pulls the warmth out; this puts it back. */
-  saturation: 1.16,
-  contrast: 1.03,
-  warmth: [1.035, 1.0, 0.93] as [number, number, number],
-  brightness: 1,
+  saturation: 1.12,
+  contrast: 1.01,
+  warmth: [1.04, 1.0, 0.94] as [number, number, number],
+  brightness: 1.1,
   /** Signed. Positive lifts the shadows and pulls the highlights down. */
-  shadows: 0,
-  highlights: 0,
+  shadows: 0.14,
+  highlights: -0.04,
   /** Overall softness, as a fraction mixed toward a blurred copy. */
   blur: 0,
   blurRadius: 0.0025,
@@ -358,30 +349,22 @@ export type DepthRegion = {
 };
 
 export const DEPTH_REGIONS: DepthRegion[] = [
-  { name: "back wall", u: [0.0, 1.0], v: [0.0, 1.0], depth: 0.2, feather: 0.02 },
-  { name: "window", u: [0.655, 0.885], v: [0.02, 0.6], depth: 0.12, feather: 0.09 },
-  { name: "lamp", u: [0.015, 0.19], v: [0.2, 0.56], depth: 0.34, feather: 0.1 },
-  { name: "bed and figure", u: [0.6, 0.97], v: [0.24, 0.93], depth: 0.52, feather: 0.14 },
-  { name: "sheets", u: [0.5, 1.0], v: [0.7, 1.0], depth: 0.6, feather: 0.15 },
-  { name: "foreground figure", u: [0.17, 0.56], v: [0.05, 1.0], depth: 0.78, feather: 0.15 },
-  { name: "cigarette smoke", u: [0.26, 0.46], v: [0.28, 0.46], depth: 0.84, feather: 0.12 },
+  { name: "hollywood sky", u: [0.36, 0.64], v: [0.08, 0.42], depth: 0.44, feather: 0.08 },
+  { name: "office back wall", u: [0.3, 0.7], v: [0.12, 0.78], depth: 0.48, feather: 0.06 },
+  { name: "desk and fan", u: [0.34, 0.66], v: [0.28, 0.68], depth: 0.5, feather: 0.1 },
+  { name: "chair", u: [0.3, 0.48], v: [0.42, 0.74], depth: 0.52, feather: 0.12 },
+  { name: "door frame", u: [0.26, 0.74], v: [0.0, 1.0], depth: 0.5, feather: 0.08 },
+  { name: "office floor", u: [0.3, 0.7], v: [0.55, 0.95], depth: 0.54, feather: 0.12 },
+  { name: "left palm", u: [0.0, 0.24], v: [0.1, 0.98], depth: 0.56, feather: 0.14 },
+  { name: "right palm", u: [0.76, 1.0], v: [0.1, 0.98], depth: 0.56, feather: 0.14 },
+  { name: "foreground walls", u: [0.0, 1.0], v: [0.0, 1.0], depth: 0.58, feather: 0.04 },
 ];
 
 /** Base depth used where no region claims a pixel. */
-export const DEPTH_BASE = 0.2;
+export const DEPTH_BASE = 0.5;
 
 /**
- * Areas of the plate to exclude from sampling, in normalized image space.
- *
- * The reference plate has the site's own interface painted into it. Without
- * these masks every label renders twice: once as splats, once as the real HTML
- * on top of it. Delete these once a clean plate exists.
+ * UI masks for plates that have chrome painted in. The Hollywood office plate is
+ * clean — nothing to exclude.
  */
-export const MASK_REGIONS: Array<{ name: string; u: [number, number]; v: [number, number] }> = [
-  { name: "brand", u: [0.0, 0.17], v: [0.0, 0.16] },
-  { name: "menu", u: [0.88, 1.0], v: [0.0, 0.11] },
-  { name: "nav list", u: [0.84, 1.0], v: [0.24, 0.75] },
-  { name: "quote", u: [0.0, 0.18], v: [0.58, 0.8] },
-  { name: "copyright", u: [0.0, 0.21], v: [0.9, 1.0] },
-  { name: "pagination", u: [0.43, 0.57], v: [0.9, 1.0] },
-];
+export const MASK_REGIONS: Array<{ name: string; u: [number, number]; v: [number, number] }> = [];

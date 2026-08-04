@@ -137,6 +137,9 @@ export type Tuning = {
     colorHighlights: number;
   };
   room: {
+    driveSplats: boolean;
+    backdropVisible: boolean;
+    backdropOpacity: number;
     visible: boolean;
     opacity: number;
     blend: RoomBlendMode;
@@ -249,18 +252,18 @@ function defaults(): Tuning {
     splatCamera: { ...camera },
     roomCamera: { ...camera },
     view: {
-      linkRoomCamera: false,
+      linkRoomCamera: true,
       maxYaw: CAMERA.maxYaw,
       maxPitch: CAMERA.maxPitch,
       ease: CAMERA.ease,
-      driftAmplitude: CAMERA.driftAmplitude,
+      driftAmplitude: 0,
       driftPeriod: CAMERA.driftPeriod,
-      freeze: false,
+      freeze: true,
     },
     splats: {
       visible: true,
       opacity: POINTS.opacity,
-      sizeScale: 1,
+      sizeScale: 1.08,
       falloff: POINTS.falloff,
       glow: POINTS.glow,
       blend: "premultiplied",
@@ -276,23 +279,26 @@ function defaults(): Tuning {
       glintSpeed: MOTION.glintSpeed,
       glintWidth: MOTION.glintWidth,
       glintStrength: MOTION.glintStrength,
-      colorBrightness: 1,
-      colorSaturation: 1.12,
-      colorContrast: 1,
+      colorBrightness: 1.14,
+      colorSaturation: 1.06,
+      colorContrast: 1.02,
       colorTintR: 1,
       colorTintG: 1,
       colorTintB: 1,
       colorWarmR: RENDER.warmth[0],
       colorWarmG: RENDER.warmth[1],
       colorWarmB: RENDER.warmth[2],
-      colorShadows: 0,
-      colorHighlights: 0,
+      colorShadows: 0.06,
+      colorHighlights: -0.03,
     },
     room: {
-      visible: true,
+      driveSplats: true,
+      backdropVisible: true,
+      backdropOpacity: 1,
+      visible: false,
       opacity: ROOM.opacity,
       blend: "opaque",
-      doubleSide: true,
+      doubleSide: false,
       brightness: ROOM.brightness,
       saturation: ROOM.saturation,
       contrast: 1,
@@ -683,18 +689,19 @@ export const SECTIONS: Section[] = [
   {
     id: "splatCamera",
     title: "splat camera",
-    hint: "The lens the cloud is seen through. Rebuild after moving it.",
-    open: true,
+    hint: "Used only when drive splat placement is off. Otherwise the 3d camera owns the cloud.",
+    open: false,
     controls: cameraControls("splatCamera", "splat", { rebuildFov: true }),
   },
   {
     id: "roomCamera",
     title: "3d camera",
-    hint: "A separate lens for the mesh. Unlink in view motion to move it alone.",
+    hint: "FOV only — camera stays on the plate axis. Move/rotate/scale the mesh+splats under 3d scene.",
     open: true,
-    controls: cameraControls("roomCamera", "3d", {
-      hint: "The mesh is re-fit live when this lens moves.",
-    }),
+    controls: [
+      range("roomCamera.fov", "fov", 14, 90, 0.25, { rebuild: true }),
+      range("roomCamera.fitPadding", "fit padding", 0.5, 1.5, 0.005, { rebuild: true }),
+    ],
   },
   {
     id: "view",
@@ -749,9 +756,12 @@ export const SECTIONS: Section[] = [
   {
     id: "room",
     title: "3d scene",
-    hint: "Mesh transform. Offsets pivot on the bake's own target.",
+    hint: "Mesh transform drives splat placement. Backdrop is the static plate behind everything.",
     controls: [
-      toggle("room.visible", "visible"),
+      toggle("room.driveSplats", "drive splat placement", "Splats follow mesh moves, rotates and scale."),
+      toggle("room.backdropVisible", "static backdrop", "Plate PNG behind mesh and splats — fills gaps when particles part."),
+      range("room.backdropOpacity", "backdrop opacity", 0, 1, 0.005),
+      toggle("room.visible", "mesh visible"),
       range("room.opacity", "opacity", 0, 1, 0.005),
       {
         kind: "select",

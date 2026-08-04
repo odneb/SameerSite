@@ -106,149 +106,67 @@ export function parseScript(script: string): ScriptBlock[] {
 
 export const defaultContent: SiteContent = {
   meta: {
-    title: "s.w. jafar — scriptwriter, actor",
+    title: "sameer Jafar — actor-screenwriter",
     description:
-      "sameer jafar. scriptwriter and actor, toronto. selected work, and how to reach him.",
+      "sameer jafar. screenwriter and actor, toronto. selected work, and how to reach him.",
   },
   brand: {
-    name: "s.w. jafar",
-    role: "scriptwriter. actor.",
+    name: "sameer Jafar",
+    role: "actor-screenwriter",
     mark: "s.w.j.",
   },
   hero: {
-    quote: "i write\nto make sense\nof things that\ndon't make sense.",
+    quote: "",
     attribution: "toronto",
   },
   sections: [
     {
-      id: "writing",
+      id: "acting",
       number: "01",
+      label: "acting",
+      focus: { u: 0.24, v: 0.35 },
+      script: `Acting demo reel:
+https://vimeo.com/717302713/9c9bb5dbdc
+
+= cut to
+
+IMDb link: https://www.imdb.com/name/nm10475976/?ref_=ext_shr_lnk
+
+full cv on request.`,
+    },
+    {
+      id: "writing",
+      number: "02",
       label: "writing",
       focus: { u: 0.34, v: 0.42 },
-      script: `> int. a room in toronto — 4:00 a.m.
+      script: `= selected
 
-the work is mostly waiting. then, for about an hour, it isn't.
-
-= selected
-
-- the quiet part | feature. in development.
-- nazar | feature. first draft. with producers.
-- borrowed light | pilot. optioned, 2025.
-- a good son | short. festival run, 2024.
-
-there are two others i'm not allowed to name yet.
-
-@ sameer
-( on process )
-: i don't outline. i listen until the room starts talking, and then i take dictation.
+- SPRAY | pilot. hour long drama. in development.
+- Kensington Hustle | feature. in development.
+- Party People | feature. in development.
+- Pushers | feature. in development.
+- Better Than a Mustache | short. festival run, 2025.
+- Party People | short proof of concept. festival run, 2026
+- Shoeshine | short. festival run. 2023
+- Alternating Current | short. festival run. 2022
+- I Feel Uncomfortable on the Balcony | short. festival run. 2021
 
 = end of excerpt
 
 pages available on request. i'd rather you read them than read about them.`,
     },
     {
-      id: "film",
-      number: "02",
-      label: "film",
-      focus: { u: 0.72, v: 0.5 },
-      script: `> ext. somewhere off dundas — blue hour
-
-i direct the way i write. one true thing, then the next one.
-
-the camera is a witness, not a narrator. it doesn't explain. it stays in the room a beat longer than is comfortable, and something honest happens.
-
-= reels
-
-- the quiet part — proof of concept | 4 min. password on request.
-- nazar — teaser | 2 min. private link.
-- selected commercial work | on request.
-
-@ sameer
-: give me a small budget and a hard deadline and i'll give you something that doesn't look like anything else.`,
-    },
-    {
-      id: "acting",
-      number: "03",
-      label: "acting",
-      focus: { u: 0.24, v: 0.35 },
-      script: `> int. a bare stage — a single work light
-
-i started on the other side of it. i still take the work when the part is worth the trouble.
-
-- theatre | tarragon, factory, buddies. 2018 – 2022.
-- screen | independent features, two series regulars, one you'd recognise.
-- training | conservatory, then eight years of being wrong in public.
-
-@ sameer
-( flatly )
-: i'm good in a room. i'm better on a page. i'm best when nobody's told me what the scene is about.
-
-= cut to
-
-full resume and self-tapes on request.`,
-    },
-    {
-      id: "journal",
-      number: "04",
-      label: "journal",
-      focus: { u: 0.5, v: 0.62 },
-      script: `> int. the same room — different night
-
-notes i keep so i don't lose them.
-
-= march
-
-nobody in a good scene knows they're in a scene. that's the whole trick.
-
-= february
-
-wrote nine pages. kept one line. it was the right line.
-
-= january
-
-my grandfather told stories out of order on purpose. i understand now — he was protecting the ending.
-
-= november
-
-toronto in the winter is the best writing partner i've had. it never asks how it's going.`,
-    },
-    {
       id: "about",
-      number: "05",
+      number: "03",
       label: "about",
       focus: { u: 0.34, v: 0.28 },
-      script: `> int. kitchen — late
+      script: `Sameer a Meisner-trained actor and George Brown College Screenwriting Alumnus is based in Toronto. His work explores characters as by-products of their environment, and the transformation of identity that occurs through emotionally-driven stories through mystery and humour. Embracing the cultural mosaic of his upbringing, his films feature multiple languages and perspectives to reflect the universal truths of life.
 
-sameer jafar writes and directs out of toronto.
+= contact
 
-he grew up between two languages and never fully trusted either one, which turned out to be useful. he writes about families that love each other badly, cities that don't apologise, and men who explain themselves too late.
-
-he has been described, by people who meant it kindly, as difficult to categorise.
-
-= the short version
-
-- writes | features, pilots, the occasional short.
-- directs | when the material asks for it.
-- acts | when the part is worth the trouble.
-- based | toronto. travels for the right room.
-
-@ sameer
-: i'm not interested in being the loudest thing in the room. i'm interested in being the thing you think about on the drive home.`,
-    },
-    {
-      id: "contact",
-      number: "06",
-      label: "contact",
-      focus: { u: 0.44, v: 0.5 },
-      script: `> int. anywhere — now
-
-if you've read this far, you already know.
-
-- email | hello@swjafar.com
-- representation | on request.
+- email | sameer@swjafar.com
+- acting representation | faith@element-artist.com
 - toronto | and wherever the work is.
-
-send a sentence about what you're making. that's enough to start.
 
 = fade out`,
     },

@@ -24,10 +24,14 @@ import {
 import {
   loadRoom,
   loadRoomTransform,
+  roomAdjustFromTuning,
+  roomBasePlacement,
   roomDepthRatios,
+  roomManualMatrix,
   type Room,
   type RoomTransform,
 } from "./room";
+import { applyPlateCamera, plateLensDistance } from "./plate-camera";
 import {
   buildTuning,
   getTuning,
@@ -129,6 +133,10 @@ export class SplatField {
   private uniforms: Record<string, THREE.IUniform> = {};
   private room: Room | null = null;
   private roomTransform: RoomTransform | null = null;
+  /** Mesh and splats share manual alignment from the 3d scene panel. */
+  private alignedGroup = new THREE.Group();
+  private backdrop: THREE.Mesh | null = null;
+  private backdropMaterial: THREE.MeshBasicMaterial | null = null;
 
   private timer = new THREE.Timer();
   private frame = 0;
@@ -165,6 +173,7 @@ export class SplatField {
   private downscaled = false;
   private pixelRatioCap: number;
   private cachedBounds = { width: 12, height: 6.75 };
+  private plateAspect = 4 / 3;
 
   constructor(canvas: HTMLCanvasElement, options: SplatFieldOptions) {
     this.canvas = canvas;
@@ -204,6 +213,9 @@ export class SplatField {
     this.splatCamera.position.set(0, 0, this.splatBaseDistance);
     this.roomCamera.position.set(0, 0, this.roomBaseDistance);
     this.interactionPlane.constant = -this.tuning.turbulence.planeDepth;
+
+    this.alignedGroup.matrixAutoUpdate = false;
+    this.scene.add(this.alignedGroup);
   }
 
   async init() {
@@ -211,6 +223,8 @@ export class SplatField {
     if (this.disposed) return;
 
     this.cachedBounds = { width: buffers.bounds.width, height: buffers.bounds.height };
+    this.plateAspect = buffers.bounds.width / Math.max(buffers.bounds.height, 1e-6);
+    this.buildBackdrop(buffers.bounds.width, buffers.bounds.height);
     this.buildPoints(buffers);
     await this.buildRoom(buffers.bounds.height);
     if (this.disposed) return;
@@ -225,15 +239,64 @@ export class SplatField {
     this.options.onReady?.();
   }
 
+  private async buildBackdrop(worldWidth: number, worldHeight: number) {
+    const loader = new THREE.TextureLoader();
+    try {
+      const texture = await loader.loadAsync(this.options.plateUrl);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+
+      this.backdropMaterial = new THREE.MeshBasicMaterial({
+        map: texture,
+        depthWrite: false,
+        depthTest: false,
+        toneMapped: true,
+        transparent: true,
+      });
+
+      this.backdrop = new THREE.Mesh(
+        new THREE.PlaneGeometry(worldWidth, worldHeight),
+        this.backdropMaterial,
+      );
+      this.backdrop.renderOrder = -20;
+      this.backdrop.frustumCulled = false;
+      // Focal plane — the plate the cloud is a surface of.
+      this.backdrop.position.set(0, 0, 0);
+      this.scene.add(this.backdrop);
+    } catch {
+      this.backdrop = null;
+      this.backdropMaterial = null;
+    }
+  }
+
+  private activeCamera() {
+    return this.tuning.room.driveSplats ? this.roomCamera : this.splatCamera;
+  }
+
+  private syncDriveSplats(state: Tuning) {
+    if (!state.room.driveSplats) return;
+    const lens = state.roomCamera;
+    Object.assign(state.splatCamera, {
+      fov: lens.fov,
+      fitPadding: lens.fitPadding,
+      yaw: lens.yaw,
+      pitch: lens.pitch,
+      distance: lens.distance,
+      targetX: lens.targetX,
+      targetY: lens.targetY,
+    });
+  }
+
   /**
    * The lens the plate was taken through, in world units.
-   *
-   * Splats are unprojected about this point and the room mesh is scaled about it,
-   * which is the entire reason the two share a space. It is not the same as
-   * `baseDistance`: that one moves with the viewport so the frame always covers.
    */
-  private lensDistance(worldHeight: number, fov: number) {
-    return worldHeight / 2 / Math.tan((fov * Math.PI) / 360);
+  private plateLens(fov = this.tuning.roomCamera.fov) {
+    return plateLensDistance(
+      this.cachedBounds.height,
+      fov,
+      this.tuning.roomCamera.fitPadding,
+    );
   }
 
   private async buildRoom(worldHeight: number) {
@@ -245,7 +308,7 @@ export class SplatField {
       const room = await loadRoom({
         url: roomUrl,
         transform: this.roomTransform,
-        lensDistance: this.lensDistance(worldHeight, this.tuning.roomCamera.fov),
+        lensDistance: this.plateLens(this.tuning.roomCamera.fov),
         uniforms: this.uniforms,
         maxAnisotropy: this.renderer.capabilities.getMaxAnisotropy(),
       });
@@ -254,7 +317,7 @@ export class SplatField {
         return;
       }
       this.room = room;
-      this.scene.add(room.object);
+      this.alignedGroup.add(room.object);
     } catch {
       // A missing or broken backdrop is not worth losing the cloud over.
     }
@@ -292,12 +355,18 @@ export class SplatField {
     if (this.options.roomUrl) {
       try {
         this.roomTransform = await loadRoomTransform(ROOM.transformUrl);
+        this.tuning.splatCamera.fov = this.roomTransform.camera.fov;
+        this.tuning.roomCamera.fov = this.roomTransform.camera.fov;
+        this.syncDriveSplats(this.tuning);
       } catch {
         this.roomTransform = null;
       }
     }
 
     const build = buildTuning(this.tuning);
+    if (this.tuning.room.driveSplats) {
+      build.fov = this.tuning.roomCamera.fov;
+    }
     // The tier ceiling still applies: a phone does not get a desktop budget just
     // because somebody dragged the count up on a desktop.
     const ceiling =
@@ -312,8 +381,8 @@ export class SplatField {
     const buffers = buildFromPlate(plate, {
       targetCount,
       build,
-      depthData,
-      roomDepth: this.roomTransform ? roomDepthRatios(this.roomTransform) : null,
+      depthData: null,
+      roomDepth: null,
     });
     onProgress?.(0.95);
     return buffers;
@@ -387,7 +456,7 @@ export class SplatField {
     // pop the cloud out of view at the edges.
     this.points.frustumCulled = false;
     this.points.renderOrder = 1;
-    this.scene.add(this.points);
+    this.alignedGroup.add(this.points);
   }
 
   private buildComposer() {
@@ -418,16 +487,12 @@ export class SplatField {
     this.composer.addPass(this.gradePass);
   }
 
-  /** Cover distance for a lens so the plate always fills the viewport. */
+  /** Cover distance — identical to {@link plateLens} so mesh and camera agree. */
   private fitDistance(
     bounds: { width: number; height: number },
     settings: Tuning["splatCamera"],
   ) {
-    const aspect = Math.max(this.canvas.clientWidth / Math.max(this.canvas.clientHeight, 1), 0.2);
-    const halfFov = (settings.fov * Math.PI) / 360;
-    const distForHeight = bounds.height / 2 / Math.tan(halfFov);
-    const distForWidth = bounds.width / 2 / (Math.tan(halfFov) * aspect);
-    return Math.min(distForHeight, distForWidth) / Math.max(settings.fitPadding, 0.05);
+    return plateLensDistance(bounds.height, settings.fov, settings.fitPadding);
   }
 
   resize() {
@@ -436,11 +501,29 @@ export class SplatField {
 
     this.renderer.setSize(width, height, false);
     this.composer?.setSize(width, height);
-    const aspect = width / height;
-    this.splatCamera.aspect = aspect;
-    this.roomCamera.aspect = aspect;
+
+    const windowAspect = width / Math.max(height, 1);
+    const plateAspect = this.plateAspect;
+
+    for (const camera of [this.splatCamera, this.roomCamera]) {
+      camera.clearViewOffset();
+      camera.aspect = windowAspect;
+
+      if (Math.abs(windowAspect - plateAspect) > 0.001) {
+        if (windowAspect > plateAspect) {
+          const subWidth = height * plateAspect;
+          camera.setViewOffset(width, height, (width - subWidth) * 0.5, 0, subWidth, height);
+        } else {
+          const subHeight = width / plateAspect;
+          camera.setViewOffset(width, height, 0, (height - subHeight) * 0.5, width, subHeight);
+        }
+      }
+
+      camera.updateProjectionMatrix();
+    }
+
     if (this.gradePass) {
-      this.gradePass.uniforms.uAspect.value = width / Math.max(height, 1);
+      this.gradePass.uniforms.uAspect.value = plateAspect;
     }
 
     this.refitCamera();
@@ -459,7 +542,7 @@ export class SplatField {
     this.roomCamera.updateProjectionMatrix();
 
     const buffer = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    const halfFov = (this.tuning.splatCamera.fov * Math.PI) / 360;
+    const halfFov = (this.activeCamera().fov * Math.PI) / 360;
     if (this.uniforms.uFocal) {
       this.uniforms.uFocal.value = buffer.y / 2 / Math.tan(halfFov);
     }
@@ -473,6 +556,7 @@ export class SplatField {
    * the field rebuilding, which is the panel's business, not this method's.
    */
   applyTuning(state: Tuning = getTuning()) {
+    this.syncDriveSplats(state);
     this.tuning = state;
     const u = this.uniforms;
     if (!u.uTime) return;
@@ -555,6 +639,11 @@ export class SplatField {
     this.interactionPlane.constant = -turbulence.planeDepth;
 
     this.applyRoomTuning(state);
+    this.applyAlignment(state);
+
+    if (this.splatPass) {
+      this.splatPass.camera = this.activeCamera();
+    }
 
     const post = state.post;
     this.renderer.toneMappingExposure = post.exposure;
@@ -591,12 +680,34 @@ export class SplatField {
     this.refitCamera();
   }
 
+  private applyAlignment(state: Tuning) {
+    const values = state.room;
+    this.alignedGroup.matrix.copy(roomManualMatrix(roomAdjustFromTuning(values)));
+    this.alignedGroup.updateMatrixWorld(true);
+
+    if (this.backdrop) {
+      this.backdrop.visible = values.backdropVisible;
+    }
+    if (this.backdropMaterial) {
+      this.backdropMaterial.opacity = values.backdropOpacity;
+      this.backdropMaterial.needsUpdate = true;
+    }
+  }
+
   private applyRoomTuning(state: Tuning) {
     const room = this.room;
-    if (!room) return;
-
     const values = state.room;
-    room.object.visible = values.visible;
+
+    if (this.roomTransform) {
+      const lens = this.plateLens(state.roomCamera.fov);
+      if (room) {
+        room.object.visible = values.visible;
+        room.object.matrix.copy(roomBasePlacement(this.roomTransform, lens));
+        room.object.updateMatrixWorld(true);
+      }
+    }
+
+    if (!room) return;
 
     const uniforms = room.material.uniforms;
     uniforms.uBrightness.value = values.brightness;
@@ -634,11 +745,6 @@ export class SplatField {
       room.material.side = values.doubleSide ? THREE.DoubleSide : THREE.FrontSide;
       room.material.needsUpdate = true;
     }
-
-    room.place(
-      this.lensDistance(this.cachedBounds.height, state.roomCamera.fov),
-      values,
-    );
   }
 
   start() {
@@ -679,78 +785,40 @@ export class SplatField {
   };
 
   private updateCamera(delta: number, elapsed: number) {
-    this.applyOrbitCamera(
-      this.splatCamera,
-      this.tuning.splatCamera,
-      this.splatBaseDistance,
-      delta,
+    const view = this.tuning.view;
+    const ease = 1 - Math.pow(1 - view.ease, delta * 60);
+    this.cameraOffset.lerp(this.targetOffset, ease);
+    this.focusOffset.lerp(this.targetFocus, ease * 0.8);
+
+    const lens = this.plateLens(this.tuning.roomCamera.fov);
+    const motion = {
+      maxYaw: this.tuning.view.maxYaw,
+      maxPitch: this.tuning.view.maxPitch,
+      ease: this.tuning.view.ease,
+      driftAmplitude: this.tuning.view.driftAmplitude,
+      driftPeriod: this.tuning.view.driftPeriod,
+      freeze: this.tuning.view.freeze,
+      offset: this.cameraOffset,
+      focus: this.focusOffset,
+      interactive: true,
       elapsed,
-      true,
-    );
+      delta,
+    };
+
+    applyPlateCamera(this.roomCamera, lens, motion);
+
+    if (this.tuning.room.driveSplats) {
+      this.splatCamera.position.copy(this.roomCamera.position);
+      this.splatCamera.quaternion.copy(this.roomCamera.quaternion);
+      return;
+    }
+
+    applyPlateCamera(this.splatCamera, lens, motion);
 
     if (this.tuning.view.linkRoomCamera) {
       this.roomCamera.position.copy(this.splatCamera.position);
       this.roomCamera.quaternion.copy(this.splatCamera.quaternion);
-      return;
     }
-
-    this.applyOrbitCamera(
-      this.roomCamera,
-      this.tuning.roomCamera,
-      this.roomBaseDistance,
-      delta,
-      elapsed,
-      false,
-    );
-  }
-
-  private applyOrbitCamera(
-    camera: THREE.PerspectiveCamera,
-    settings: Tuning["splatCamera"],
-    baseDistance: number,
-    delta: number,
-    elapsed: number,
-    interactive: boolean,
-  ) {
-    const view = this.tuning.view;
-    const ease = interactive ? 1 - Math.pow(1 - view.ease, delta * 60) : 1;
-
-    if (interactive) {
-      this.cameraOffset.lerp(this.targetOffset, ease);
-      this.focusOffset.lerp(this.targetFocus, ease * 0.8);
-    }
-
-    const live = interactive && !view.freeze ? 1 : 0;
-    const drift = (elapsed / Math.max(view.driftPeriod, 0.5)) * Math.PI * 2;
-    const yaw =
-      settings.yaw +
-      (interactive
-        ? live *
-          (this.cameraOffset.x * view.maxYaw + Math.sin(drift) * view.driftAmplitude)
-        : 0);
-    const pitch =
-      settings.pitch +
-      (interactive
-        ? live *
-          (this.cameraOffset.y * view.maxPitch +
-            Math.cos(drift * 0.73) * view.driftAmplitude * 0.6)
-        : 0);
-
-    const focusX = interactive ? this.focusOffset.x * live : 0;
-    const focusY = interactive ? this.focusOffset.y * live : 0;
-    const distance =
-      baseDistance + (interactive ? this.focusOffset.z * live : 0) + settings.distance;
-
-    camera.position.set(
-      Math.sin(yaw) * distance + focusX * 0.35 + settings.targetX,
-      Math.sin(pitch) * distance + focusY * 0.35 + settings.targetY,
-      Math.cos(yaw) * Math.cos(pitch) * distance,
-    );
-    camera.lookAt(
-      focusX * 0.6 + settings.targetX,
-      focusY * 0.6 + settings.targetY,
-      0,
-    );
   }
 
   /** Step the pixel ratio down once if we are clearly missing frame budget. */
@@ -789,7 +857,7 @@ export class SplatField {
 
     if (!this.points) return;
 
-    this.raycaster.setFromCamera(this.pointerNdc, this.splatCamera);
+    this.raycaster.setFromCamera(this.pointerNdc, this.activeCamera());
     const hit = this.raycaster.ray.intersectPlane(this.interactionPlane, this.pointerWorld);
     if (!hit) return;
 
@@ -873,6 +941,9 @@ export class SplatField {
     this.points?.geometry.dispose();
     this.material?.dispose();
     this.room?.dispose();
+    this.backdrop?.geometry.dispose();
+    this.backdropMaterial?.map?.dispose();
+    this.backdropMaterial?.dispose();
     this.bloomPass?.dispose();
     this.composer?.dispose();
     this.renderer.dispose();

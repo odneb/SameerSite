@@ -10,6 +10,7 @@
  *      and interaction all keep working unchanged.
  */
 
+import { plateLensDistance } from "./plate-camera";
 import {
   DEPTH_BASE,
   DEPTH_REGIONS,
@@ -264,7 +265,7 @@ export function buildFromPlate(
    * reproduces the plate exactly — and any camera movement away from it reveals
    * true parallax rather than a stack of sliding cards.
    */
-  const lensDistance = worldHeight / 2 / Math.tan((build.fov * Math.PI) / 360);
+  const lensDistance = plateLensDistance(worldHeight, build.fov);
 
   const sourceMap = buildSourceMap(imgW, imgH, data);
   const luminance = new Float32Array(imgW * imgH);
@@ -316,7 +317,7 @@ export function buildFromPlate(
         // are on different scales and only metres are comparable.
         let z = (depthAt(u, v) - 0.5) * worldDepth + worldCenter;
         let measured = 0;
-        if (depthPlate) {
+        if (depthPlate && roomDepth) {
           const dx = Math.min(depthPlate.width - 1, (u * depthPlate.width) | 0);
           const dy = Math.min(depthPlate.height - 1, (v * depthPlate.height) | 0);
           const index = dy * depthPlate.width + dx;
