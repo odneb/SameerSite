@@ -232,7 +232,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
             </div>
 
             <div
-              className={`scroll-quiet ${rise} max-h-[62vh] overflow-x-hidden overflow-y-auto pr-5`}
+              className={`scroll-quiet ${rise} max-h-[62vh] overflow-x-hidden overflow-y-auto pr-7`}
               style={hydrated ? { animationDelay: "120ms" } : undefined}
             >
               <ScriptBody text={rendered.script} />
@@ -396,7 +396,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
               </button>
             </header>
 
-            <div className={`scroll-quiet ${rise} min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-6`}>
+            <div className={`scroll-quiet ${rise} min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-6 pb-6`}>
               {rendered.portrait && (
                 <figure className="mb-8 w-full max-w-[48ch] overflow-hidden rounded-3xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -132,12 +132,18 @@
   .scroll-quiet {
     scrollbar-width: thin;
     scrollbar-color: rgba(206, 193, 167, 0.18) transparent;
+    scrollbar-gutter: stable;
   }
   .scroll-quiet::-webkit-scrollbar {
-    width: 2px;
+    width: 4px;
+  }
+  .scroll-quiet::-webkit-scrollbar-track {
+    background: transparent;
+    margin-block: 4px;
   }
   .scroll-quiet::-webkit-scrollbar-thumb {
     background-color: rgba(206, 193, 167, 0.22);
+    border-radius: 999px;
   }
 }
 
