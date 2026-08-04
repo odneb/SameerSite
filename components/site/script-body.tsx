@@ -7,7 +7,7 @@ const URL_ONLY = /^https?:\/\/\S+$/i;
 const EMAIL_ONLY = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
 
 const linkClass =
-  "text-canvas decoration-canvas/40 hover:text-ember hover:decoration-ember font-semibold underline underline-offset-4 transition-colors duration-300";
+  "text-ember decoration-ember/45 hover:text-canvas hover:decoration-canvas/50 font-semibold underline underline-offset-4 transition-colors duration-300";
 
 function externalLink(href: string, children: ReactNode, key?: string | number) {
   const isEmail = href.startsWith("mailto:") || EMAIL_ONLY.test(href);
@@ -61,13 +61,16 @@ export function ScriptBody({ text }: { text: string }) {
           case "action": {
             // Closing asides (e.g. writing availability) sit apart from body copy.
             const isAside = /pages available on request/i.test(block.text);
+            if (isAside) {
+              return (
+                <div key={index} className="mt-2 mb-3.5 max-w-[48ch]">
+                  <span aria-hidden className="bg-canvas/70 mb-4 block h-px w-8" />
+                  <p className="text-ember/85 font-semibold">{linkify(block.text)}</p>
+                </div>
+              );
+            }
             return (
-              <p
-                key={index}
-                className={`mb-3.5 max-w-[48ch] font-semibold ${
-                  isAside ? "text-ember/85 mt-2" : "text-ink"
-                }`}
-              >
+              <p key={index} className="text-ink mb-3.5 max-w-[48ch] font-semibold">
                 {linkify(block.text)}
               </p>
             );
@@ -144,8 +147,15 @@ export function ScriptBody({ text }: { text: string }) {
             );
           }
 
-          case "beat":
-            return <div key={index} aria-hidden className="h-4" />;
+          case "beat": {
+            // Hairline before link/credit lists; plain gap elsewhere.
+            const beforeList = blocks[index + 1]?.kind === "entry";
+            return beforeList ? (
+              <div key={index} aria-hidden className="border-canvas/55 my-5 w-8 border-t" />
+            ) : (
+              <div key={index} aria-hidden className="h-4" />
+            );
+          }
         }
       })}
     </div>

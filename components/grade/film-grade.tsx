@@ -28,8 +28,22 @@ function useGrade() {
   return useSyncExternalStore(subscribeGrade, getGrade, getGrade);
 }
 
+/** Phones can't take the desktop bloom/softness stack — it turns type to mush. */
+function useIsMobileViewport() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return mobile;
+}
+
 export function FilmGrade({ children }: FilmGradeProps) {
   const grade = useGrade();
+  const isMobile = useIsMobileViewport();
   const reactId = useId().replace(/:/g, "");
   const filterId = `film-grade-${reactId}`;
   const [booted, setBooted] = useState(false);
@@ -39,22 +53,36 @@ export function FilmGrade({ children }: FilmGradeProps) {
     setBooted(true);
   }, []);
 
+  // Desktop look unchanged. Real phones (esp. iOS WebKit) amplify the same
+  // softness + backdrop bloom into heavy milk vs laptop Chrome — keep both,
+  // but much lighter so type and plate stay readable.
+  const look = useMemo<GradeSettings>(() => {
+    if (!isMobile) return grade;
+    return {
+      ...grade,
+      softness: grade.softness * 0.35,
+      bloom: grade.bloom * 0.22,
+      bloomRadius: Math.max(2, grade.bloomRadius * 0.22),
+      chromaticAberration: grade.chromaticAberration * 0.6,
+    };
+  }, [grade, isMobile]);
+
   const baseCurve = useMemo(
-    () => curveTable(grade.shadow, grade.midtone, grade.highlight),
-    [grade.shadow, grade.midtone, grade.highlight],
+    () => curveTable(look.shadow, look.midtone, look.highlight),
+    [look.shadow, look.midtone, look.highlight],
   );
 
   const curves = useMemo(() => {
-    const strength = grade.lutStrength;
+    const strength = look.lutStrength;
     return {
-      r: mixCurves(baseCurve, grade.lutCurves?.r, strength),
-      g: mixCurves(baseCurve, grade.lutCurves?.g, strength),
-      b: mixCurves(baseCurve, grade.lutCurves?.b, strength),
+      r: mixCurves(baseCurve, look.lutCurves?.r, strength),
+      g: mixCurves(baseCurve, look.lutCurves?.g, strength),
+      b: mixCurves(baseCurve, look.lutCurves?.b, strength),
     };
-  }, [baseCurve, grade.lutCurves, grade.lutStrength]);
+  }, [baseCurve, look.lutCurves, look.lutStrength]);
 
-  const cssFilter = useMemo(() => buildCssFilter(grade, filterId), [grade, filterId]);
-  const ca = Math.max(0, grade.chromaticAberration);
+  const cssFilter = useMemo(() => buildCssFilter(look, filterId), [look, filterId]);
+  const ca = Math.max(0, look.chromaticAberration);
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -109,7 +137,7 @@ export function FilmGrade({ children }: FilmGradeProps) {
             <feColorMatrix
               in="curved"
               type="matrix"
-              values={`1 0 0 0 ${grade.fade * 0.22}  0 1 0 0 ${grade.fade * 0.2}  0 0 1 0 ${grade.fade * 0.18}  0 0 0 1 0`}
+              values={`1 0 0 0 ${look.fade * 0.22}  0 1 0 0 ${look.fade * 0.2}  0 0 1 0 ${look.fade * 0.18}  0 0 0 1 0`}
               result="faded"
             />
 
@@ -117,34 +145,34 @@ export function FilmGrade({ children }: FilmGradeProps) {
             <feColorMatrix
               in="faded"
               type="matrix"
-              values={`1 ${grade.temperature * 0.18} ${grade.temperature * 0.06} 0 0  0 1 0 0 0  ${-grade.temperature * 0.16} ${-grade.temperature * 0.04} 1 0 0  0 0 0 1 0`}
+              values={`1 ${look.temperature * 0.18} ${look.temperature * 0.06} 0 0  0 1 0 0 0  ${-look.temperature * 0.16} ${-look.temperature * 0.04} 1 0 0  0 0 0 1 0`}
             />
           </filter>
         </defs>
       </svg>
 
-      {/* Optical layers — always full-bleed, above graded content, below UI. */}
+      {/* Optical layers — above graded content, below UI. */}
       <div className="pointer-events-none absolute inset-0 z-[60] overflow-hidden">
-        {booted && <GrainOverlay grade={grade} />}
-        {grade.bloom > 0.001 && (
+        {booted && <GrainOverlay grade={look} />}
+        {look.bloom > 0.001 && (
           <div
             aria-hidden
             className="absolute inset-0"
             style={{
-              backdropFilter: `blur(${grade.bloomRadius}px) brightness(${1 + grade.bloom * 0.55}) saturate(${1 + grade.bloom * 0.15})`,
-              WebkitBackdropFilter: `blur(${grade.bloomRadius}px) brightness(${1 + grade.bloom * 0.55}) saturate(${1 + grade.bloom * 0.15})`,
-              mixBlendMode: grade.bloomBlend,
-              opacity: Math.min(1, 0.15 + grade.bloom * 0.85),
+              backdropFilter: `blur(${look.bloomRadius}px) brightness(${1 + look.bloom * 0.55}) saturate(${1 + look.bloom * 0.15})`,
+              WebkitBackdropFilter: `blur(${look.bloomRadius}px) brightness(${1 + look.bloom * 0.55}) saturate(${1 + look.bloom * 0.15})`,
+              mixBlendMode: look.bloomBlend,
+              opacity: Math.min(1, 0.15 + look.bloom * 0.85),
             }}
           />
         )}
-        {grade.vignette > 0.001 && (
+        {look.vignette > 0.001 && (
           <div
             aria-hidden
             className="absolute inset-0"
             style={{
-              background: `radial-gradient(ellipse at center, transparent ${Math.max(18, 55 - grade.vignette * 28)}%, rgba(12,14,10,${0.35 + grade.vignette * 0.65}) 100%)`,
-              opacity: Math.min(1, 0.35 + grade.vignette * 0.65),
+              background: `radial-gradient(ellipse at center, transparent ${Math.max(18, 55 - look.vignette * 28)}%, rgba(12,14,10,${0.35 + look.vignette * 0.65}) 100%)`,
+              opacity: Math.min(1, 0.35 + look.vignette * 0.65),
             }}
           />
         )}
