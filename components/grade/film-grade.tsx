@@ -89,7 +89,7 @@ export function FilmGrade({ children }: FilmGradeProps) {
     <div className="relative h-full w-full overflow-hidden">
       {/* Graded world — plate, type, panels. */}
       <div
-        className="grade-stage absolute inset-0 origin-center will-change-[filter]"
+        className="grade-stage absolute inset-0 z-0 origin-center will-change-[filter]"
         style={{ filter: cssFilter }}
       >
         {children}
@@ -152,8 +152,9 @@ export function FilmGrade({ children }: FilmGradeProps) {
         </defs>
       </svg>
 
-      {/* Optical layers — above graded content, below UI. */}
-      <div className="pointer-events-none absolute inset-0 z-[60] overflow-hidden">
+      {/* Optical layers — fixed so they win against any escaped UI on iOS, and
+          sit above absolute chrome inside the stage. pointer-events none. */}
+      <div className="pointer-events-none fixed inset-0 z-[90] overflow-hidden">
         {booted && <GrainOverlay grade={look} />}
         {look.bloom > 0.001 && (
           <div

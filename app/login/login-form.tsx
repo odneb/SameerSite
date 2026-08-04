@@ -26,23 +26,23 @@ export function LoginForm() {
         autoComplete="current-password"
         autoFocus
         required
-        className="border-hairline focus:border-ember text-ink mt-3 w-full border-b bg-transparent pb-2 text-[0.9rem] tracking-[0.3em] outline-none transition-colors duration-500"
+        className="border-hairline focus:border-ember text-ink mt-3 w-full border-b bg-transparent pb-3 text-[1.15rem] tracking-[0.08em] outline-none transition-colors duration-500"
       />
 
       <div className="mt-8 flex items-center gap-5">
         <button
           type="submit"
           disabled={pending}
-          className="text-ink hover:text-ember text-[0.62rem] tracking-[0.34em] transition-colors duration-500 disabled:opacity-40"
+          className="text-ink hover:text-ember text-[1rem] tracking-[0.08em] transition-colors duration-500 disabled:opacity-40"
         >
-          {pending ? "checking" : "enter"}
+          {pending ? "Checking…" : "Enter"}
         </button>
         <span aria-hidden className="bg-hairline h-px w-10" />
         <Link
           href="/"
-          className="text-ink-faint hover:text-ink-dim text-[0.62rem] tracking-[0.34em] transition-colors duration-500"
+          className="text-ink-faint hover:text-ink-dim text-[1rem] tracking-[0.08em] transition-colors duration-500"
         >
-          back
+          Back to site
         </Link>
       </div>
 

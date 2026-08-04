@@ -96,7 +96,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
   return (
     <>
       {/* ───────────── Desktop chrome ───────────── */}
-      <div className="pointer-events-none fixed z-30 hidden md:top-[8%] md:left-[14%] md:block">
+      <div className="pointer-events-none absolute z-30 hidden md:top-[8%] md:left-[14%] md:block">
         <header className={`plate-type pointer-events-auto ${rise}`}>
           <button
             type="button"
@@ -158,7 +158,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
 
       <div
         aria-hidden={isOpen}
-        className="pointer-events-none fixed right-[7%] bottom-[9%] z-20 hidden md:block"
+        className="pointer-events-none absolute right-[7%] bottom-[9%] z-20 hidden md:block"
         style={{
           opacity: isOpen ? 0 : 1,
           transform: isOpen ? "translate3d(0, 14px, 0)" : "none",
@@ -192,7 +192,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
 
       <section
         aria-hidden={!isOpen}
-        className="fixed inset-y-0 right-0 z-20 hidden w-[52vw] max-w-[46rem] items-center md:flex"
+        className="absolute inset-y-0 right-0 z-20 hidden w-[52vw] max-w-[46rem] items-center md:flex"
         style={{
           opacity: isOpen ? 1 : 0,
           pointerEvents: isOpen ? "auto" : "none",
@@ -241,7 +241,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
         )}
       </section>
 
-      <footer className="pointer-events-none fixed inset-x-0 bottom-0 z-30 hidden px-12 pb-8 md:block">
+      <footer className="pointer-events-none absolute inset-x-0 bottom-0 z-30 hidden px-12 pb-8 md:block">
         <div className="pointer-events-auto absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center gap-2.5">
           <button
             type="button"
@@ -269,7 +269,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
 
       {/* ───────────── Mobile chrome ───────────── */}
       <div
-        className="pointer-events-none fixed inset-x-0 top-0 z-30 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] md:hidden"
+        className="pointer-events-none absolute inset-x-0 top-0 z-30 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] md:hidden"
         style={{
           opacity: isOpen ? 0 : 1,
           transition: "opacity 500ms ease",
@@ -288,13 +288,13 @@ export function SiteShell({ content }: { content: SiteContent }) {
         </header>
       </div>
 
-      {/* Quote locked into the right silhouette band on the mirrored plate. */}
+      {/* Quote locked into the person-shadow on the mirrored / zoomed mobile plate. */}
       <div
         aria-hidden={isOpen}
-        className="plate-type pointer-events-none fixed z-20 max-w-[16.5rem] text-right md:hidden"
+        className="plate-type pointer-events-none absolute z-20 w-max max-w-[min(14.5rem,58vw)] text-right md:hidden"
         style={{
-          top: "42%",
-          right: "0.9rem",
+          top: "34%",
+          right: "18%",
           left: "auto",
           opacity: isOpen ? 0 : 1,
           transform: isOpen ? "translate3d(0, 12px, 0)" : "none",
@@ -307,17 +307,17 @@ export function SiteShell({ content }: { content: SiteContent }) {
             .map((line) => line.trim())
             .filter(Boolean)
             .map((line, index) => (
-              <p key={index} className="text-ink whitespace-nowrap text-[0.9rem] leading-[1.55] tracking-[0.03em]">
+              <p key={index} className="text-ink whitespace-nowrap text-[0.82rem] leading-[1.5] tracking-[0.02em]">
                 {line}
               </p>
             ))}
           {content.hero.quote.trim() && (
-            <span aria-hidden className="bg-canvas/70 mt-3 ml-auto block h-px w-5" />
+            <span aria-hidden className="bg-canvas/70 mt-2.5 ml-auto block h-px w-5" />
           )}
           {content.hero.attribution && (
             <p
-              className={`text-ember -translate-x-2.5 text-[0.82rem] tracking-[0.28em] ${
-                content.hero.quote.trim() ? "mt-2.5" : ""
+              className={`text-ember text-[0.74rem] tracking-[0.26em] ${
+                content.hero.quote.trim() ? "mt-2" : ""
               }`}
             >
               {content.hero.attribution}
@@ -328,7 +328,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
 
       {/* Stays visible over the section sheet so you can switch pages. */}
       <nav
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] md:hidden"
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-[80] md:hidden"
         style={{
           paddingBottom: "max(0.65rem, env(safe-area-inset-bottom))",
         }}
@@ -361,7 +361,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
       {/* Mobile section sheet — full bleed, slides up; leaves room for bottom nav. */}
       <section
         aria-hidden={!isOpen}
-        className="fixed inset-0 z-[70] flex flex-col md:hidden"
+        className="absolute inset-0 z-[70] flex flex-col md:hidden"
         style={{
           opacity: isOpen ? 1 : 0,
           pointerEvents: isOpen ? "auto" : "none",

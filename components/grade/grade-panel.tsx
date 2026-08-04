@@ -93,7 +93,7 @@ export function GradePanel() {
         role="dialog"
         aria-label="film grade"
         className={[
-          "fixed top-0 right-0 z-[80] flex h-dvh w-[min(22rem,92vw)] flex-col",
+          "fixed top-0 right-0 z-[110] flex h-dvh w-[min(22rem,92vw)] flex-col",
           "border-l border-white/10 bg-black/80 text-white/75 shadow-2xl backdrop-blur-md",
           "font-mono text-[10px] tracking-[0.04em]",
           "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",

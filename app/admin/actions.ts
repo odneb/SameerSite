@@ -4,8 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { hasValidSession } from "@/lib/auth/session";
-import { SECTION_LIMIT } from "@/lib/content/schema";
-import { discardDraft, publishDraft, saveDraft } from "@/lib/content/store";
+import { SECTION_LIMIT, type SiteContent } from "@/lib/content/schema";
+import {
+  discardDraft,
+  getDraftContent,
+  publishDraft,
+  saveDraft,
+} from "@/lib/content/store";
 
 import type { AdminState } from "./state";
 
@@ -14,7 +19,7 @@ async function requireSession() {
 }
 
 /** Rebuild the content object from flat form fields. */
-function contentFromFormData(formData: FormData) {
+function contentFromFormData(formData: FormData, previous: SiteContent) {
   const value = (key: string) => {
     const raw = formData.get(key);
     return typeof raw === "string" ? raw : "";
@@ -23,11 +28,13 @@ function contentFromFormData(formData: FormData) {
   const sections = [];
   for (let index = 0; index < SECTION_LIMIT; index++) {
     if (!formData.has(`section.${index}.script`)) break;
+    const prior = previous.sections[index];
     sections.push({
       id: value(`section.${index}.id`),
       number: String(index + 1).padStart(2, "0"),
       label: value(`section.${index}.label`),
       script: value(`section.${index}.script`),
+      ...(prior?.portrait ? { portrait: prior.portrait } : {}),
       focus: {
         u: Number(value(`section.${index}.u`)),
         v: Number(value(`section.${index}.v`)),
@@ -57,12 +64,13 @@ export async function submitAction(
   const publishing = formData.get("intent") === "publish";
 
   try {
-    await saveDraft(contentFromFormData(formData));
+    const previous = await getDraftContent();
+    await saveDraft(contentFromFormData(formData, previous));
     if (publishing) await publishDraft();
   } catch {
     return {
       status: "error",
-      message: "couldn't save. check the storage configuration.",
+      message: "Could not save. Please try again in a moment.",
       at: Date.now(),
     };
   }
@@ -72,7 +80,9 @@ export async function submitAction(
 
   return {
     status: publishing ? "published" : "saved",
-    message: publishing ? "published. it's live." : "saved as a draft.",
+    message: publishing
+      ? "Published. Your live website is updated."
+      : "Saved. Press Publish when you want this on the live site.",
     at: Date.now(),
   };
 }

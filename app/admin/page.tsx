@@ -9,7 +9,7 @@ import { AdminForm } from "./admin-form";
 import { discardAction } from "./actions";
 
 export const metadata = {
-  title: "s.w. jafar — the back office",
+  title: "Edit website — sameer jafar",
   robots: { index: false, follow: false },
 };
 
@@ -23,51 +23,53 @@ export default async function AdminPage() {
 
   return (
     <main className="bg-void min-h-dvh overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-7 pt-16 md:px-10">
-        <header className="border-hairline flex flex-wrap items-end justify-between gap-6 border-b pb-8">
+      <div className="mx-auto max-w-3xl px-5 pt-10 pb-8 sm:px-10">
+        <header className="border-hairline flex flex-wrap items-start justify-between gap-6 border-b pb-8">
           <div>
-            <p className="text-ink-faint text-[0.58rem] tracking-[0.34em]">
-              int. the back office — night
-            </p>
-            <h1 className="text-ink mt-4 text-[0.78rem] tracking-[0.44em]">
-              the site, editable
+            <h1 className="text-ink text-[1.6rem] font-semibold tracking-[0.04em]">
+              Edit your website
             </h1>
+            <p className="text-ink-dim mt-3 max-w-[40ch] text-[1.05rem] leading-relaxed">
+              1) Choose what to edit &nbsp; 2) Change the words &nbsp; 3) Save &nbsp; 4)
+              Publish when you want it live
+            </p>
           </div>
 
-          <div className="flex items-center gap-6 text-[0.58rem] tracking-[0.3em]">
+          <div className="flex flex-wrap items-center gap-5 text-[1rem]">
             <Link
               href="/"
-              className="text-ink-faint hover:text-ink-dim transition-colors duration-500"
+              className="text-ink-dim hover:text-ink underline-offset-4 transition-colors hover:underline"
             >
-              view live
+              View live site
             </Link>
-            <form action={discardAction}>
-              <button
-                type="submit"
-                className="text-ink-faint hover:text-ember transition-colors duration-500"
-              >
-                discard draft
-              </button>
-            </form>
             <form action={logoutAction}>
               <button
                 type="submit"
-                className="text-ink-faint hover:text-ink-dim transition-colors duration-500"
+                className="text-ink-dim hover:text-ink underline-offset-4 transition-colors hover:underline"
               >
-                sign out
+                Sign out
               </button>
             </form>
           </div>
         </header>
 
-        <p className="text-ink-faint mt-8 max-w-[54ch] text-[0.6rem] leading-relaxed tracking-[0.14em]">
-          edit anything below. save a draft as often as you like — nothing changes on
-          the live site until you press publish.
-        </p>
-
-        <div className="mt-14">
+        <div className="mt-10">
           <AdminForm content={content} unpublished={unpublished} />
         </div>
+
+        <details className="border-hairline mt-16 mb-8 rounded-xl border px-5 py-4">
+          <summary className="text-ink-dim cursor-pointer text-[1rem]">
+            Advanced: throw away unsaved draft and reload the live site
+          </summary>
+          <form action={discardAction} className="mt-4">
+            <button
+              type="submit"
+              className="text-ember text-[1rem] underline-offset-4 hover:underline"
+            >
+              Discard draft and reload live copy
+            </button>
+          </form>
+        </details>
       </div>
     </main>
   );

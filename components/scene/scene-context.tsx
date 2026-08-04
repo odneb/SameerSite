@@ -81,7 +81,7 @@ export function PlainImageStage({ plateUrl, children }: PlainImageStageProps) {
   return (
     <SceneContext.Provider value={api}>
       <div
-        className="bg-void pointer-events-none fixed inset-0 z-0 overflow-hidden"
+        className="bg-void pointer-events-none absolute inset-0 z-0 overflow-hidden"
         // Keep the plate out of the page's dark color-scheme so the browser
         // doesn't regrade it.
         style={{ colorScheme: "only light" }}
@@ -91,7 +91,7 @@ export function PlainImageStage({ plateUrl, children }: PlainImageStageProps) {
           aria-hidden
           alt=""
           src={plateUrl}
-          className="absolute inset-0 h-full w-full scale-x-[-1] object-cover object-center"
+          className="absolute inset-0 h-full w-full origin-center object-cover object-center scale-x-[-1] max-md:scale-x-[-1.18] max-md:scale-y-[1.18] max-md:-translate-x-[6%]"
           style={{
             filter: "none",
             mixBlendMode: "normal",

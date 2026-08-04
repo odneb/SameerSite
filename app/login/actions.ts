@@ -24,12 +24,14 @@ export async function loginAction(
   if (result.ok) redirect("/admin");
 
   if (result.reason === "unconfigured") {
-    return { error: "no password is set. add admin_password to the environment." };
+    return { error: "Login is not set up yet. Ask Matt to check the password setting." };
   }
   if (result.reason === "rate-limited") {
-    return { error: `too many attempts. try again in ${result.retryInSeconds}s.` };
+    return {
+      error: `Too many tries. Please wait ${result.retryInSeconds} seconds and try again.`,
+    };
   }
-  return { error: "that isn't it." };
+  return { error: "That password is not correct." };
 }
 
 export async function logoutAction() {
