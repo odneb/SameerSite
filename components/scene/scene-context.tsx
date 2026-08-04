@@ -91,12 +91,21 @@ export function PlainImageStage({ plateUrl, children }: PlainImageStageProps) {
           aria-hidden
           alt=""
           src={plateUrl}
-          className="absolute inset-0 h-full w-full object-cover object-center"
+          className="absolute inset-0 h-full w-full scale-x-[-1] object-cover object-center"
           style={{
             filter: "none",
             mixBlendMode: "normal",
             opacity: 1,
           }}
+        />
+        {/* Soft dim so type and nav stay readable over the plate. */}
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-black/[0.18]"
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/20"
         />
       </div>
       {children}

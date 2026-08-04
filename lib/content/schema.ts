@@ -56,6 +56,7 @@ export const SECTION_LIMIT = 10;
  *   : the line itself             dialogue
  *   = cut to:                     transition
  *   - a titled entry | a note     list entry
+ *   - demo reel | https://…       titled hyperlink (label only, URL hidden)
  *   anything else                 action
  *   (blank line)                  beat
  */
@@ -90,8 +91,12 @@ export function parseScript(script: string): ScriptBlock[] {
     } else if (line.startsWith("=")) {
       blocks.push({ kind: "transition", text: line.slice(1).trim() });
     } else if (line.startsWith("-")) {
-      const [text, note = ""] = line.slice(1).split("|");
-      blocks.push({ kind: "entry", text: text.trim(), note: note.trim() });
+      const [text, ...rest] = line.slice(1).split("|");
+      blocks.push({
+        kind: "entry",
+        text: text.trim(),
+        note: rest.map((part) => part.trim()).filter(Boolean).join(" · "),
+      });
     } else if (line.startsWith("(") && line.endsWith(")")) {
       blocks.push({ kind: "parenthetical", text: line.slice(1, -1).trim() });
     } else {
@@ -106,17 +111,17 @@ export function parseScript(script: string): ScriptBlock[] {
 
 export const defaultContent: SiteContent = {
   meta: {
-    title: "sameer Jafar — actor-screenwriter",
+    title: "sameer jafar — actor-screenwriter",
     description:
       "sameer jafar. screenwriter and actor, toronto. selected work, and how to reach him.",
   },
   brand: {
-    name: "sameer Jafar",
+    name: "sameer jafar",
     role: "actor-screenwriter",
     mark: "s.w.j.",
   },
   hero: {
-    quote: "",
+    quote: "say what must be said.\ndo what must be done.",
     attribution: "toronto",
   },
   sections: [
@@ -125,50 +130,44 @@ export const defaultContent: SiteContent = {
       number: "01",
       label: "acting",
       focus: { u: 0.24, v: 0.35 },
-      script: `Acting demo reel:
-https://vimeo.com/717302713/9c9bb5dbdc
+      script: `- overcompensating | a24 / amazon | recurring
+- shoresy | crave/bell media | recurring
+- saint pierre | cbc | recurring
 
-= cut to
+- full cv on request | faith@element-artist.com
 
-IMDb link: https://www.imdb.com/name/nm10475976/?ref_=ext_shr_lnk
-
-full cv on request.`,
+- demo reel | https://vimeo.com/717302713/9c9bb5dbdc
+- imdb | https://www.imdb.com/name/nm10475976/?ref_=ext_shr_lnk`,
     },
     {
       id: "writing",
       number: "02",
       label: "writing",
       focus: { u: 0.34, v: 0.42 },
-      script: `= selected
-
-- SPRAY | pilot. hour long drama. in development.
-- Kensington Hustle | feature. in development.
-- Party People | feature. in development.
-- Pushers | feature. in development.
-- Better Than a Mustache | short. festival run, 2025.
-- Party People | short proof of concept. festival run, 2026
-- Shoeshine | short. festival run. 2023
-- Alternating Current | short. festival run. 2022
-- I Feel Uncomfortable on the Balcony | short. festival run. 2021
-
-= end of excerpt
+      script: `- spray | pilot. hour long drama. in development.
+- kensington hustle | feature. in development.
+- party people | feature. in development.
+- pushers | feature. in development.
+- better than a mustache | short. festival run, 2025.
+- shoeshine | short. festival run. 2023
+- alternating current | short. festival run. 2022
+- i feel uncomfortable on the balcony | short. festival run. 2021
 
 pages available on request. i'd rather you read them than read about them.`,
     },
     {
       id: "about",
       number: "03",
-      label: "about",
+      label: "contact",
       focus: { u: 0.34, v: 0.28 },
-      script: `Sameer a Meisner-trained actor and George Brown College Screenwriting Alumnus is based in Toronto. His work explores characters as by-products of their environment, and the transformation of identity that occurs through emotionally-driven stories through mystery and humour. Embracing the cultural mosaic of his upbringing, his films feature multiple languages and perspectives to reflect the universal truths of life.
+      script: `sameer is a toronto-based actor and screenwriter. he writes characters who are shaped by where they come from and undone by where they're going. his work is funny about serious things.
 
-= contact
+meisner-trained. actra member. currently in development on spray, an hour-long drama.
 
 - email | sameer@swjafar.com
 - acting representation | faith@element-artist.com
-- toronto | and wherever the work is.
 
-= fade out`,
+toronto, and wherever the work is.`,
     },
   ],
   footer: {
@@ -182,7 +181,7 @@ export function sanitizeContent(input: unknown): SiteContent {
 
   const text = (value: unknown, fallback: string, max: number) => {
     if (typeof value !== "string") return fallback;
-    const trimmed = value.replace(/\r\n/g, "\n").trim();
+    const trimmed = value.replace(/\r\n/g, "\n").trim().toLowerCase();
     return trimmed.slice(0, max);
   };
 

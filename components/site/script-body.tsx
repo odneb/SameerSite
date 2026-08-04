@@ -1,29 +1,39 @@
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { parseScript } from "@/lib/content/schema";
 
 const EMAIL_OR_URL = /([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}|https?:\/\/[^\s]+)/gi;
+const URL_ONLY = /^https?:\/\/\S+$/i;
+const EMAIL_ONLY = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+
+const linkClass =
+  "text-canvas decoration-canvas/40 hover:text-ember hover:decoration-ember font-semibold underline underline-offset-4 transition-colors duration-300";
+
+function externalLink(href: string, children: ReactNode, key?: string | number) {
+  const isEmail = href.startsWith("mailto:") || EMAIL_ONLY.test(href);
+  const url = isEmail && !href.startsWith("mailto:") ? `mailto:${href}` : href;
+  return (
+    <a
+      key={key}
+      href={url}
+      target={isEmail ? undefined : "_blank"}
+      rel={isEmail ? undefined : "noreferrer"}
+      className={linkClass}
+    >
+      {children}
+    </a>
+  );
+}
 
 /** Turn addresses and links into something you can actually click. */
 function linkify(text: string) {
   const parts = text.split(EMAIL_OR_URL);
   return parts.map((part, index) => {
     if (!part) return null;
-    const isEmail = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(part);
+    const isEmail = EMAIL_ONLY.test(part);
     const isUrl = /^https?:\/\//i.test(part);
     if (!isEmail && !isUrl) return <Fragment key={index}>{part}</Fragment>;
-
-    return (
-      <a
-        key={index}
-        href={isEmail ? `mailto:${part}` : part}
-        target={isUrl ? "_blank" : undefined}
-        rel={isUrl ? "noreferrer" : undefined}
-        className="text-ember decoration-ember/40 hover:decoration-ember underline underline-offset-4 transition-colors duration-300"
-      >
-        {part}
-      </a>
-    );
+    return externalLink(part, part, index);
   });
 }
 
@@ -35,14 +45,14 @@ export function ScriptBody({ text }: { text: string }) {
   const blocks = parseScript(text);
 
   return (
-    <div className="text-[0.875rem] leading-[1.95] tracking-[0.01em]">
+    <div className="text-[1.05rem] leading-[1.9] tracking-[0.015em] md:text-[1.1rem]">
       {blocks.map((block, index) => {
         switch (block.kind) {
           case "scene":
             return (
               <p
                 key={index}
-                className="border-hairline text-ink mt-1 mb-5 border-b pb-3 text-[0.66rem] tracking-[0.34em]"
+                className="border-canvas/35 text-canvas mt-1 mb-5 border-b pb-3 text-[0.78rem] font-semibold tracking-[0.3em]"
               >
                 {block.text}
               </p>
@@ -50,7 +60,7 @@ export function ScriptBody({ text }: { text: string }) {
 
           case "action":
             return (
-              <p key={index} className="text-ink/80 mb-3 max-w-[46ch]">
+              <p key={index} className="text-ink-dim mb-3.5 max-w-[48ch]">
                 {linkify(block.text)}
               </p>
             );
@@ -59,7 +69,7 @@ export function ScriptBody({ text }: { text: string }) {
             return (
               <p
                 key={index}
-                className="text-ember mt-5 mb-1 ml-[24%] text-[0.7rem] tracking-[0.3em]"
+                className="text-ember mt-5 mb-1 ml-[24%] text-[0.82rem] font-semibold tracking-[0.28em]"
               >
                 {block.text}
               </p>
@@ -67,14 +77,14 @@ export function ScriptBody({ text }: { text: string }) {
 
           case "parenthetical":
             return (
-              <p key={index} className="text-ink-dim mb-1 ml-[19%] text-[0.78rem]">
+              <p key={index} className="text-sage mb-1 ml-[19%] text-[0.9rem]">
                 ({block.text})
               </p>
             );
 
           case "dialogue":
             return (
-              <p key={index} className="text-ink mb-4 ml-[12%] max-w-[34ch]">
+              <p key={index} className="text-ink mb-4 ml-[12%] max-w-[36ch]">
                 {linkify(block.text)}
               </p>
             );
@@ -83,32 +93,48 @@ export function ScriptBody({ text }: { text: string }) {
             return (
               <p
                 key={index}
-                className="text-ink-faint mt-6 mb-4 text-right text-[0.62rem] tracking-[0.34em]"
+                className="text-sage mt-6 mb-4 text-right text-[0.74rem] tracking-[0.3em]"
               >
                 {block.text}
               </p>
             );
 
-          case "entry":
+          case "entry": {
+            // `- demo reel | https://…` or `- full cv on request | you@mail.com`
+            // → titled hyperlink, no raw URL/address.
+            const note = block.note.trim();
+            const noteIsLink =
+              URL_ONLY.test(note) ||
+              EMAIL_ONLY.test(note) ||
+              note.startsWith("mailto:");
+            if (noteIsLink) {
+              return (
+                <p key={index} className="mb-3.5">
+                  {externalLink(note, block.text)}
+                </p>
+              );
+            }
+
             return (
               <div
                 key={index}
-                className="group/entry flex items-baseline gap-3 py-[0.3rem]"
+                className="group/entry flex items-baseline gap-3 py-[0.4rem]"
               >
-                <span className="text-ink group-hover/entry:text-ember shrink-0 transition-colors duration-500">
+                <span className="text-ink group-hover/entry:text-canvas shrink-0 font-bold tracking-[0.02em] transition-colors duration-500">
                   {linkify(block.text)}
                 </span>
                 <span
                   aria-hidden
-                  className="border-hairline min-w-6 flex-1 -translate-y-[0.3em] border-b border-dotted"
+                  className="border-sage/45 min-w-6 flex-1 -translate-y-[0.3em] border-b border-dotted"
                 />
                 {block.note && (
-                  <span className="text-ink-dim shrink-0 text-[0.78rem]">
+                  <span className="text-ink-dim shrink-0 text-[0.9rem] tracking-[0.01em]">
                     {linkify(block.note)}
                   </span>
                 )}
               </div>
             );
+          }
 
           case "beat":
             return <div key={index} aria-hidden className="h-4" />;

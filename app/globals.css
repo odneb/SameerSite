@@ -7,6 +7,8 @@
   --color-ink-dim: #8a7f6a;
   --color-ink-faint: #574f40;
   --color-ember: #d9b374;
+  --color-canvas: #c43a22;
+  --color-sage: #6a765e;
   --color-hairline: rgba(206, 193, 167, 0.14);
 
   --font-mono: "Courier New", Courier, monospace;
@@ -16,19 +18,49 @@
   --animate-plate-drift: plate-drift 38s ease-in-out infinite alternate;
 }
 
-/* /v2 — cool teal exterior plate. Ink needs to read on dark slate, not sepia dust. */
+/*
+ * /v2 — sampled from hero-plate.jpg:
+ * wall shadow #23291a, wall sage #637057, sofa sunlight #d0b480,
+ * painting crimson #d63216 / #8e2c14, brass-warm #c9a35a.
+ */
 .theme-v2 {
-  --color-void: #0a1010;
-  --color-ink: #ebe6dc;
-  --color-ink-dim: #b7b2a6;
-  --color-ink-faint: #7d7a72;
-  --color-ember: #e0c08a;
-  --color-hairline: rgba(235, 230, 220, 0.18);
+  --color-void: #1c2319;
+  --color-ink: #e8d9b8;
+  --color-ink-dim: #9a9374;
+  --color-ink-faint: #5a5745;
+  --color-ember: #c9a35a;
+  --color-canvas: #d63216;
+  --color-sage: #6a765e;
+  --color-hairline: rgba(208, 180, 128, 0.22);
 }
 
 .theme-v2 .plate-type,
 .theme-v2 .plate-type :is(button, p, span, a) {
-  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.65), 0 0 2px rgba(0, 0, 0, 0.85);
+  text-shadow: 0 1px 14px rgba(28, 35, 25, 0.65), 0 0 2px rgba(28, 35, 25, 0.8);
+}
+
+/* Type sitting on the red painting — cream over crimson. */
+.theme-v2 .nav-on-painting,
+.theme-v2 .nav-on-painting :is(button, span) {
+  text-shadow:
+    0 1px 12px rgba(70, 20, 8, 0.7),
+    0 0 2px rgba(40, 10, 4, 0.85);
+}
+
+.theme-v2 ::selection {
+  background-color: rgba(214, 50, 22, 0.28);
+  color: #f2e4c8;
+}
+
+.theme-v2 :focus-visible {
+  outline-color: var(--color-canvas);
+}
+
+.theme-v2 .scroll-quiet {
+  scrollbar-color: rgba(201, 163, 90, 0.35) transparent;
+}
+.theme-v2 .scroll-quiet::-webkit-scrollbar-thumb {
+  background-color: rgba(201, 163, 90, 0.4);
 }
 
 @layer base {
@@ -47,6 +79,13 @@
     font-variant-ligatures: none;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    text-transform: lowercase;
   }
 
   ::selection {
