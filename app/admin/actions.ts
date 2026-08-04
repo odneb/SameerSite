@@ -15,7 +15,7 @@ import {
   saveDraft,
 } from "@/lib/content/store";
 
-import type { AdminState } from "./state";
+import type { AdminState, RestoreState } from "./state";
 
 async function requireSession() {
   if (!(await hasValidSession())) redirect("/login");
@@ -120,18 +120,6 @@ export async function discardAction() {
   revalidatePath("/preview");
   redirect("/admin");
 }
-
-export type RestoreState = {
-  status: "idle" | "ok" | "error";
-  message: string | null;
-  at: number;
-};
-
-export const initialRestoreState: RestoreState = {
-  status: "idle",
-  message: null,
-  at: 0,
-};
 
 /** Restore a past revision — requires the admin password again. */
 export async function restoreRevisionAction(

@@ -4,10 +4,8 @@ import { useActionState, useState } from "react";
 
 import type { SiteRevision } from "@/lib/content/revision-types";
 
-import {
-  initialRestoreState,
-  restoreRevisionAction,
-} from "./actions";
+import { restoreRevisionAction } from "./actions";
+import { initialRestoreState } from "./state";
 
 export function RevisionsPanel({ revisions }: { revisions: SiteRevision[] }) {
   const [state, formAction, pending] = useActionState(
