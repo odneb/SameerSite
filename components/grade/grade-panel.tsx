@@ -21,6 +21,9 @@ import {
   type BlendMode,
 } from "@/lib/grade/settings";
 
+/** Flip on to tune the look again. Settings/code stay wired either way. */
+const GRADE_PANEL_ENABLED = false;
+
 function useGrade() {
   return useSyncExternalStore(subscribeGrade, getGrade, getGrade);
 }
@@ -33,6 +36,7 @@ export function GradePanel() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (!GRADE_PANEL_ENABLED) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "\\" || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target;
@@ -52,6 +56,8 @@ export function GradePanel() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  if (!GRADE_PANEL_ENABLED) return null;
 
   const onLut = async (file: File | null) => {
     if (!file) return;

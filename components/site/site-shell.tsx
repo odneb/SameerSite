@@ -291,7 +291,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
       {/* Quote locked into the right silhouette band on the mirrored plate. */}
       <div
         aria-hidden={isOpen}
-        className="plate-type pointer-events-none fixed z-20 max-w-[11.5rem] text-right md:hidden"
+        className="plate-type pointer-events-none fixed z-20 max-w-[16.5rem] text-right md:hidden"
         style={{
           top: "42%",
           right: "0.9rem",
@@ -307,7 +307,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
             .map((line) => line.trim())
             .filter(Boolean)
             .map((line, index) => (
-              <p key={index} className="text-ink text-[0.9rem] leading-[1.55] tracking-[0.03em]">
+              <p key={index} className="text-ink whitespace-nowrap text-[0.9rem] leading-[1.55] tracking-[0.03em]">
                 {line}
               </p>
             ))}
