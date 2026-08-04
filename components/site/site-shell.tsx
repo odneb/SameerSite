@@ -397,9 +397,8 @@ export function SiteShell({ content }: { content: SiteContent }) {
             </header>
 
             <div className={`scroll-quiet ${rise} min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-6`}>
-              <ScriptBody text={rendered.script} />
               {rendered.portrait && (
-                <figure className="mt-8 w-full max-w-[48ch] overflow-hidden rounded-3xl">
+                <figure className="mb-8 w-full max-w-[48ch] overflow-hidden rounded-3xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={rendered.portrait}
@@ -408,6 +407,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
                   />
                 </figure>
               )}
+              <ScriptBody text={rendered.script} />
             </div>
           </article>
         )}
