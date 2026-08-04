@@ -163,12 +163,12 @@ pages available on request. i'd rather you read them than read about them.`,
       label: "contact",
       portrait: "/scene/contact-portrait.jpg",
       focus: { u: 0.34, v: 0.28 },
-      script: `sameer is a toronto-based actor and screenwriter. he writes characters who are shaped by where they come from and undone by where they're going. his work is funny about serious things.
+      script: `- email | sameer@swjafar.com
+- acting representation | faith@element-artist.com
+
+sameer is a toronto-based actor and screenwriter. he writes characters who are shaped by where they come from and undone by where they're going. his work is funny about serious things.
 
 meisner-trained. actra member. currently in development on spray, an hour-long drama.
-
-- email | sameer@swjafar.com
-- acting representation | faith@element-artist.com
 
 toronto, and wherever the work is.`,
     },

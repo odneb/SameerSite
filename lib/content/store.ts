@@ -24,15 +24,15 @@ function backend(): Backend {
 }
 
 async function readBlob(key: string): Promise<SiteContent | null> {
-  const { head } = await import("@vercel/blob");
+  const { get } = await import("@vercel/blob");
   try {
-    const meta = await head(key);
-    const response = await fetch(meta.url, { cache: "no-store" });
-    if (!response.ok) return null;
-    return sanitizeContent(await response.json());
+    // Store is private — use the authenticated get() path, not a public URL.
+    const result = await get(key, { access: "private", useCache: false });
+    if (!result?.stream) return null;
+    const raw = await new Response(result.stream).text();
+    return sanitizeContent(JSON.parse(raw));
   } catch {
-    // head() throws when the blob does not exist yet, which is the normal
-    // state of a fresh deployment.
+    // Missing blob is the normal state of a fresh deployment.
     return null;
   }
 }
@@ -40,7 +40,7 @@ async function readBlob(key: string): Promise<SiteContent | null> {
 async function writeBlob(key: string, content: SiteContent) {
   const { put } = await import("@vercel/blob");
   await put(key, JSON.stringify(content, null, 2), {
-    access: "public",
+    access: "private",
     contentType: "application/json",
     addRandomSuffix: false,
     allowOverwrite: true,
