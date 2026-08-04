@@ -60,7 +60,7 @@ export function ScriptBody({ text }: { text: string }) {
 
           case "action":
             return (
-              <p key={index} className="text-ink-dim mb-3.5 max-w-[48ch]">
+              <p key={index} className="text-ink mb-3.5 max-w-[48ch] font-semibold">
                 {linkify(block.text)}
               </p>
             );

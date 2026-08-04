@@ -163,50 +163,72 @@ function buildCssFilter(grade: GradeSettings, filterId: string) {
 }
 
 /**
- * Grain always covers the full viewport. `grainSize` is the on-screen particle
- * size in CSS px — we draw a smaller noise buffer and stretch it to fill, so
- * there are never uncovered edges from CSS scale transforms.
+ * Super-35 film grain.
+ *
+ * Opacity / blend are CSS-only (never restart the loop). Size rebuilds the
+ * buffer. Speed is read from a ref each frame so the slider stays live.
+ * Softness comes from a light CSS blur — not a JS 3×3 (that froze the UI).
  */
 function GrainOverlay({ grade }: { grade: GradeSettings }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const speedRef = useRef(grade.grainSpeed);
+  const sizeRef = useRef(grade.grainSize);
+  const opacityRef = useRef(grade.grain);
+  speedRef.current = grade.grainSpeed;
+  sizeRef.current = grade.grainSize;
+  opacityRef.current = grade.grain;
 
+  // One persistent loop. Size is read from a ref and rebuilds the buffer
+  // when it changes — opacity/speed never tear the loop down.
   useEffect(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
-    if (!canvas || !wrap || grade.grain <= 0.001) return;
+    if (!canvas || !wrap) return;
 
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: false });
     if (!ctx) return;
 
     let raf = 0;
     let alive = true;
     let w = 0;
     let h = 0;
+    let lastPaint = 0;
+    let lastSize = -1;
+    let image: ImageData | null = null;
 
     const resize = () => {
       const rect = wrap.getBoundingClientRect();
-      const particle = Math.max(0.35, grade.grainSize);
-      // Internal buffer sized so each noise texel ≈ grainSize CSS pixels.
-      w = Math.max(2, Math.ceil(rect.width / particle));
-      h = Math.max(2, Math.ceil(rect.height / particle));
-      // Cap buffer for perf on huge displays / tiny grain.
-      const maxEdge = 960;
-      if (w > maxEdge || h > maxEdge) {
-        const scale = maxEdge / Math.max(w, h);
-        w = Math.max(2, Math.ceil(w * scale));
-        h = Math.max(2, Math.ceil(h * scale));
+      const size = Math.min(6, Math.max(0.5, sizeRef.current));
+      // Map size → sharp buffer resolution (no CSS blur).
+      // 0.5 = finest (~960 long edge), 6 = coarse (~56).
+      // Direct mapping so the slider never collapses under a perf cap.
+      const t = (size - 0.5) / 5.5;
+      const longEdge = Math.round(960 - t * (960 - 56));
+      const aspect = rect.width / Math.max(1, rect.height);
+      if (aspect >= 1) {
+        w = longEdge;
+        h = Math.max(8, Math.round(longEdge / aspect));
+      } else {
+        h = longEdge;
+        w = Math.max(8, Math.round(longEdge * aspect));
       }
+
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
+        image = ctx.createImageData(w, h);
+      } else if (!image || image.width !== w || image.height !== h) {
+        image = ctx.createImageData(w, h);
       }
+      lastSize = size;
     };
 
     const paint = () => {
-      if (!alive || w < 1 || h < 1) return;
-      const image = ctx.createImageData(w, h);
+      if (!alive || !image || w < 1 || h < 1) return;
       const data = image.data;
+
+      // Sharp grain plate — mid-gray centered so blend modes respond.
       for (let i = 0; i < data.length; i += 4) {
         const n = (Math.random() * 255) | 0;
         data[i] = n;
@@ -214,16 +236,40 @@ function GrainOverlay({ grade }: { grade: GradeSettings }) {
         data[i + 2] = n;
         data[i + 3] = 255;
       }
+
       ctx.putImageData(image, 0, 0);
-      if (grade.grainAnimated) raf = window.requestAnimationFrame(paint);
+    };
+
+    const tick = (time: number) => {
+      if (!alive) return;
+
+      // Live size changes rebuild the buffer without remounting.
+      if (Math.abs(sizeRef.current - lastSize) > 0.001) {
+        resize();
+        paint();
+        lastPaint = time;
+      }
+
+      if (opacityRef.current > 0.001) {
+        const speed = speedRef.current;
+        if (speed > 0.001) {
+          const frameMs = 1000 / (24 * Math.max(0.05, speed));
+          if (time - lastPaint >= frameMs) {
+            paint();
+            lastPaint = time;
+          }
+        }
+      }
+      raf = window.requestAnimationFrame(tick);
     };
 
     resize();
     paint();
+    raf = window.requestAnimationFrame(tick);
 
     const ro = new ResizeObserver(() => {
       resize();
-      if (!grade.grainAnimated) paint();
+      paint();
     });
     ro.observe(wrap);
 
@@ -232,22 +278,33 @@ function GrainOverlay({ grade }: { grade: GradeSettings }) {
       window.cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [grade.grain, grade.grainAnimated, grade.grainSize]);
+  }, []);
 
-  if (grade.grain <= 0.001) return null;
+  const visible = grade.grain > 0.001;
 
   return (
-    <div ref={wrapRef} className="absolute inset-0 overflow-hidden">
+    <div
+      ref={wrapRef}
+      className="absolute inset-0 overflow-hidden"
+      style={{
+        opacity: grade.grain,
+        mixBlendMode: grade.grainBlend,
+        visibility: visible ? "visible" : "hidden",
+      }}
+    >
       <canvas
         ref={canvasRef}
         aria-hidden
         className="absolute inset-0 h-full w-full"
         style={{
-          opacity: grade.grain,
-          mixBlendMode: grade.grainBlend,
+          // Sharp texel grain — no CSS blur. Fine size = small sharp particles.
           imageRendering: "pixelated",
         }}
       />
     </div>
   );
+}
+
+function clampByte(n: number) {
+  return n < 0 ? 0 : n > 255 ? 255 : n | 0;
 }

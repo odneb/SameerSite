@@ -83,22 +83,12 @@ export function GradePanel() {
 
   return (
     <>
-      <div
-        aria-hidden
-        className="fixed inset-0 z-[70] bg-black/20 transition-opacity duration-300"
-        style={{
-          opacity: open ? 1 : 0,
-          pointerEvents: open ? "auto" : "none",
-        }}
-        onClick={() => setOpen(false)}
-      />
-
       <aside
         role="dialog"
         aria-label="film grade"
         className={[
           "fixed top-0 right-0 z-[80] flex h-dvh w-[min(22rem,92vw)] flex-col",
-          "border-l border-white/10 bg-black/88 text-white/75 shadow-2xl backdrop-blur-xl",
+          "border-l border-white/10 bg-black/80 text-white/75 shadow-2xl backdrop-blur-md",
           "font-mono text-[10px] tracking-[0.04em]",
           "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
           open ? "translate-x-0" : "translate-x-full",
@@ -119,9 +109,9 @@ export function GradePanel() {
         </header>
 
         <div className="scroll-quiet flex-1 space-y-5 overflow-y-auto px-3 py-3">
-          <Section title="grain">
+          <Section title="grain · s35">
             <Slider
-              label="amount"
+              label="opacity"
               value={grade.grain}
               min={0}
               max={1}
@@ -129,10 +119,18 @@ export function GradePanel() {
               onChange={(v) => setGrade("grain", v)}
             />
             <Slider
+              label="speed (×24fps)"
+              value={grade.grainSpeed}
+              min={0}
+              max={2}
+              step={0.05}
+              onChange={(v) => setGrade("grainSpeed", v)}
+            />
+            <Slider
               label="size (px)"
               value={grade.grainSize}
-              min={0.35}
-              max={12}
+              min={0.5}
+              max={6}
               step={0.05}
               onChange={(v) => setGrade("grainSize", v)}
             />
@@ -142,13 +140,8 @@ export function GradePanel() {
               options={GRAIN_BLEND_MODES}
               onChange={(v) => setGrade("grainBlend", v as BlendMode)}
             />
-            <Toggle
-              label="animated"
-              checked={grade.grainAnimated}
-              onChange={(v) => setGrade("grainAnimated", v)}
-            />
             <p className="text-white/30">
-              size = particle size in px. always covers the full frame.
+              sharp · 0.5 = fine · 6 = coarse · speed 1 = 24fps
             </p>
           </Section>
 
@@ -395,28 +388,6 @@ function Select({
           </option>
         ))}
       </select>
-    </label>
-  );
-}
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center justify-between gap-2 py-0.5">
-      <span className="text-white/55">{label}</span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="accent-white/80"
-      />
     </label>
   );
 }

@@ -32,6 +32,8 @@ export type Section = {
   label: string;
   /** Screenplay-syntax body. See parseScript. */
   script: string;
+  /** Optional portrait shown above the section body (contact). */
+  portrait?: string;
   /**
    * Where the camera drifts when this section is open, in normalized plate
    * space. Lets each section frame a different part of the room.
@@ -159,6 +161,7 @@ pages available on request. i'd rather you read them than read about them.`,
       id: "about",
       number: "03",
       label: "contact",
+      portrait: "/scene/contact-portrait.jpg",
       focus: { u: 0.34, v: 0.28 },
       script: `sameer is a toronto-based actor and screenwriter. he writes characters who are shaped by where they come from and undone by where they're going. his work is funny about serious things.
 
@@ -226,11 +229,22 @@ export function sanitizeContent(input: unknown): SiteContent {
         return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : fallbackValue;
       };
 
+      const portraitRaw =
+        typeof section?.portrait === "string"
+          ? section.portrait.trim()
+          : fallback.portrait;
+      const portrait =
+        portraitRaw &&
+        (portraitRaw.startsWith("/") || portraitRaw.startsWith("https://"))
+          ? portraitRaw.slice(0, 240)
+          : undefined;
+
       return {
         id,
         number: String(index + 1).padStart(2, "0"),
         label: text(section?.label, fallback.label, 40),
         script: text(section?.script, fallback.script, MAX_LENGTHS.script),
+        ...(portrait ? { portrait } : {}),
         focus: {
           u: clamp(section?.focus?.u, fallback.focus.u),
           v: clamp(section?.focus?.v, fallback.focus.v),

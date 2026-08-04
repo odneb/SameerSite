@@ -43,14 +43,19 @@ export const BLOOM_BLEND_MODES: BlendMode[] = [
 ];
 
 export type GradeSettings = {
-  /** Opacity of the grain layer (0–1). */
+  /** Opacity of the S35 film-grain layer (0–1). */
   grain: number;
   /**
    * Apparent grain particle size in CSS pixels.
-   * Larger = coarser film stock. Canvas always covers the full viewport.
+   * ~0.8–1.6 reads as Super 35; larger = coarser stock.
+   * Canvas always covers the full viewport.
    */
   grainSize: number;
-  grainAnimated: boolean;
+  /**
+   * Temporal rate as a multiple of 24fps.
+   * 0 = still plate, 1 = 24fps film cadence, 2 = 48fps.
+   */
+  grainSpeed: number;
   grainBlend: BlendMode;
   /** Channel separation in CSS pixels. */
   chromaticAberration: number;
@@ -74,31 +79,31 @@ export type GradeSettings = {
 };
 
 export const DEFAULT_GRADE: GradeSettings = {
-  grain: 0,
-  grainSize: 1.25,
-  grainAnimated: true,
+  grain: 0.03,
+  grainSize: 1,
+  grainSpeed: 1,
   grainBlend: "overlay",
-  chromaticAberration: 0,
-  tonalRange: 1,
-  contrast: 1,
-  luminance: 1,
-  saturation: 1,
-  temperature: 0,
-  shadow: 0,
+  chromaticAberration: 0.75,
+  tonalRange: 0.97,
+  contrast: 1.04,
+  luminance: 0.89,
+  saturation: 0.97,
+  temperature: 0.12,
+  shadow: -0.01,
   midtone: 0,
-  highlight: 0,
+  highlight: 0.08,
   fade: 0,
-  bloom: 0,
-  bloomRadius: 22,
+  bloom: 0.46,
+  bloomRadius: 19,
   bloomBlend: "soft-light",
-  softness: 0,
-  vignette: 0,
+  softness: 0.28,
+  vignette: 0.04,
   lutStrength: 0,
   lutName: null,
   lutCurves: null,
 };
 
-const STORAGE_KEY = "sameer-film-grade-v2";
+const STORAGE_KEY = "sameer-film-grade-v4";
 
 type Listener = () => void;
 
@@ -152,9 +157,17 @@ export function loadGradeFromStorage() {
   try {
     const raw =
       window.localStorage.getItem(STORAGE_KEY) ??
+      window.localStorage.getItem("sameer-film-grade-v2") ??
       window.localStorage.getItem("sameer-film-grade-v1");
     if (!raw) return;
-    const parsed = JSON.parse(raw) as Partial<GradeSettings>;
+    const parsed = JSON.parse(raw) as Partial<GradeSettings> & {
+      grainAnimated?: boolean;
+    };
+    // Migrate pre-v3 boolean animation flag into a 24fps speed multiplier.
+    if (parsed.grainSpeed == null && typeof parsed.grainAnimated === "boolean") {
+      parsed.grainSpeed = parsed.grainAnimated ? 1 : 0;
+    }
+    delete parsed.grainAnimated;
     settings = normalizeGrade({ ...DEFAULT_GRADE, ...parsed });
     emit();
   } catch {
@@ -166,8 +179,9 @@ function normalizeGrade(value: GradeSettings): GradeSettings {
   return {
     ...value,
     grain: clamp(value.grain, 0, 1),
-    grainSize: clamp(value.grainSize, 0.35, 12),
-    grainBlend: (GRAIN_BLEND_MODES.includes(value.grainBlend) ? value.grainBlend : "overlay") as BlendMode,
+    grainSize: clamp(value.grainSize, 0.5, 6),
+    grainSpeed: clamp(value.grainSpeed, 0, 3),
+    grainBlend: (GRAIN_BLEND_MODES.includes(value.grainBlend) ? value.grainBlend : "soft-light") as BlendMode,
     bloomBlend: (BLOOM_BLEND_MODES.includes(value.bloomBlend) ? value.bloomBlend : "soft-light") as BlendMode,
     chromaticAberration: clamp(value.chromaticAberration, 0, 10),
     softness: clamp(value.softness, 0, 4),

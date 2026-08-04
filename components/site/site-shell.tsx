@@ -209,13 +209,42 @@ export function SiteShell({ content }: { content: SiteContent }) {
 
         {rendered && (
           <article key={rendered.id} className="relative w-full px-7 py-24 md:px-12">
-            <div className="mb-8">
-              <h1 className="text-[0.85rem] tracking-[0.36em] md:text-[0.9rem]">
-                <span className="text-canvas font-bold">{rendered.number}</span>{" "}
-                <span className="text-ink font-semibold">{rendered.label}</span>
-              </h1>
-              <span aria-hidden className="bg-canvas/60 mt-3 block h-px w-8" />
+            <div className="mb-8 flex items-start gap-8">
+              {/* Portrait shares the heading row — top-aligned with "contact". */}
+              {rendered.portrait && (
+                <figure
+                  className={`pointer-events-none absolute top-24 left-0 z-10 hidden w-[17.5rem] -translate-x-[calc(100%+0.35rem)] overflow-hidden rounded-md shadow-[0_24px_60px_rgba(0,0,0,0.55)] md:block ${rise}`}
+                  style={hydrated ? { animationDelay: "160ms" } : undefined}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={rendered.portrait}
+                    alt=""
+                    className="aspect-[3/4] h-auto w-full object-cover object-[62%_16%]"
+                  />
+                </figure>
+              )}
+
+              <div>
+                <h1 className="text-[0.85rem] tracking-[0.36em] md:text-[0.9rem]">
+                  <span className="text-canvas font-bold">{rendered.number}</span>{" "}
+                  <span className="text-ink font-semibold">{rendered.label}</span>
+                </h1>
+                <span aria-hidden className="bg-canvas/60 mt-3 block h-px w-8" />
+              </div>
             </div>
+
+            {/* Mobile: small portrait above copy so the column isn't cramped. */}
+            {rendered.portrait && (
+              <figure className={`mb-7 w-40 overflow-hidden rounded-md md:hidden ${rise}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={rendered.portrait}
+                  alt=""
+                  className="aspect-[3/4] h-auto w-full object-cover object-[62%_16%]"
+                />
+              </figure>
+            )}
 
             <div
               className={`scroll-quiet ${rise} max-h-[62vh] overflow-y-auto pr-5`}
