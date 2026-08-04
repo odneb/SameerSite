@@ -95,19 +95,17 @@ export function SiteShell({ content }: { content: SiteContent }) {
 
   return (
     <>
-      {/* Brand + index — one column on the red canvas. */}
-      <div className="pointer-events-none fixed z-30 max-md:top-7 max-md:left-7 md:top-[8%] md:left-[14%]">
+      {/* ───────────── Desktop chrome ───────────── */}
+      <div className="pointer-events-none fixed z-30 hidden md:top-[8%] md:left-[14%] md:block">
         <header className={`plate-type pointer-events-auto ${rise}`}>
           <button
             type="button"
             onClick={close}
-            className="text-ink hover:text-canvas block text-left text-[1.15rem] font-bold tracking-[0.4em] transition-colors duration-500 md:text-[1.28rem]"
+            className="text-ink hover:text-canvas block text-left text-[1.28rem] font-bold tracking-[0.4em] transition-colors duration-500"
           >
             {content.brand.name}
           </button>
-          <p className="text-ember/90 mt-2 text-[0.78rem] tracking-[0.28em] md:text-[0.82rem]">
-            {content.brand.role}
-          </p>
+          <p className="text-ember/90 mt-2 text-[0.95rem] tracking-[0.28em]">{content.brand.role}</p>
         </header>
 
         <div aria-hidden className="border-canvas/55 my-5 w-10 border-t" />
@@ -117,7 +115,11 @@ export function SiteShell({ content }: { content: SiteContent }) {
             {sections.map((section, index) => {
               const isActive = section.id === activeId;
               return (
-                <li key={section.id} className={rise} style={hydrated ? { animationDelay: `${240 + index * 90}ms` } : undefined}>
+                <li
+                  key={section.id}
+                  className={rise}
+                  style={hydrated ? { animationDelay: `${240 + index * 90}ms` } : undefined}
+                >
                   <button
                     type="button"
                     onClick={() => (isActive ? close() : open(section.id))}
@@ -126,7 +128,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
                     onFocus={() => previewFocus(section)}
                     onBlur={restoreFocus}
                     aria-current={isActive ? "true" : undefined}
-                    className="pointer-events-auto group inline-flex items-center justify-start gap-2.5 text-[0.82rem] tracking-[0.24em] transition-colors duration-500 md:text-[0.88rem]"
+                    className="pointer-events-auto group inline-flex items-center justify-start gap-2.5 text-[0.88rem] tracking-[0.24em] transition-colors duration-500"
                   >
                     <span className="whitespace-nowrap">
                       <span className={isActive ? "text-canvas font-bold" : "text-canvas/75"}>
@@ -134,9 +136,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
                       </span>{" "}
                       <span
                         className={
-                          isActive
-                            ? "text-ink font-semibold"
-                            : "text-ink/75 group-hover:text-ink"
+                          isActive ? "text-ink font-semibold" : "text-ink/75 group-hover:text-ink"
                         }
                       >
                         {section.label}
@@ -156,10 +156,9 @@ export function SiteShell({ content }: { content: SiteContent }) {
         </nav>
       </div>
 
-      {/* Standing quote. Steps aside once a section is open. */}
       <div
         aria-hidden={isOpen}
-        className="pointer-events-none fixed bottom-[7vh] right-8 z-20 md:right-[7%] md:bottom-[9%]"
+        className="pointer-events-none fixed right-[7%] bottom-[9%] z-20 hidden md:block"
         style={{
           opacity: isOpen ? 0 : 1,
           transform: isOpen ? "translate3d(0, 14px, 0)" : "none",
@@ -172,7 +171,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
             .map((line) => line.trim())
             .filter(Boolean)
             .map((line, index) => (
-              <p key={index} className="text-ink text-[1rem] leading-[1.7] tracking-[0.04em] md:text-[1.08rem]">
+              <p key={index} className="text-ink text-[1.08rem] leading-[1.7] tracking-[0.04em]">
                 {line}
               </p>
             ))}
@@ -181,7 +180,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
           )}
           {content.hero.attribution && (
             <p
-              className={`text-ember text-[0.7rem] tracking-[0.3em] md:text-[0.74rem] ${
+              className={`text-ember text-[0.74rem] tracking-[0.3em] ${
                 content.hero.quote.trim() ? "mt-3" : ""
               }`}
             >
@@ -191,10 +190,9 @@ export function SiteShell({ content }: { content: SiteContent }) {
         </div>
       </div>
 
-      {/* The script page — opens on the open-room side (right after plate flip). */}
       <section
         aria-hidden={!isOpen}
-        className="fixed inset-y-0 right-0 z-20 flex w-full max-w-[46rem] items-center md:w-[52vw]"
+        className="fixed inset-y-0 right-0 z-20 hidden w-[52vw] max-w-[46rem] items-center md:flex"
         style={{
           opacity: isOpen ? 1 : 0,
           pointerEvents: isOpen ? "auto" : "none",
@@ -208,12 +206,11 @@ export function SiteShell({ content }: { content: SiteContent }) {
         />
 
         {rendered && (
-          <article key={rendered.id} className="relative w-full px-7 py-24 md:px-12">
+          <article key={`desk-${rendered.id}`} className="relative w-full px-12 py-24">
             <div className="mb-8 flex items-start gap-8">
-              {/* Portrait shares the heading row — top-aligned with "contact". */}
               {rendered.portrait && (
                 <figure
-                  className={`pointer-events-none absolute top-24 left-0 z-10 hidden w-[17.5rem] -translate-x-[calc(100%+0.35rem)] overflow-hidden rounded-md shadow-[0_24px_60px_rgba(0,0,0,0.55)] md:block ${rise}`}
+                  className={`pointer-events-none absolute top-24 left-0 z-10 w-[17.5rem] -translate-x-[calc(100%+0.35rem)] overflow-hidden rounded-md shadow-[0_24px_60px_rgba(0,0,0,0.55)] ${rise}`}
                   style={hydrated ? { animationDelay: "160ms" } : undefined}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -226,7 +223,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
               )}
 
               <div>
-                <h1 className="text-[0.85rem] tracking-[0.36em] md:text-[0.9rem]">
+                <h1 className="text-[0.9rem] tracking-[0.36em]">
                   <span className="text-canvas font-bold">{rendered.number}</span>{" "}
                   <span className="text-ink font-semibold">{rendered.label}</span>
                 </h1>
@@ -234,20 +231,8 @@ export function SiteShell({ content }: { content: SiteContent }) {
               </div>
             </div>
 
-            {/* Mobile: small portrait above copy so the column isn't cramped. */}
-            {rendered.portrait && (
-              <figure className={`mb-7 w-40 overflow-hidden rounded-md md:hidden ${rise}`}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={rendered.portrait}
-                  alt=""
-                  className="aspect-[3/4] h-auto w-full object-cover object-[62%_16%]"
-                />
-              </figure>
-            )}
-
             <div
-              className={`scroll-quiet ${rise} max-h-[62vh] overflow-y-auto pr-5`}
+              className={`scroll-quiet ${rise} max-h-[62vh] overflow-x-hidden overflow-y-auto pr-5`}
               style={hydrated ? { animationDelay: "120ms" } : undefined}
             >
               <ScriptBody text={rendered.script} />
@@ -256,7 +241,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
         )}
       </section>
 
-      <footer className="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-7 pb-7 md:px-12 md:pb-8">
+      <footer className="pointer-events-none fixed inset-x-0 bottom-0 z-30 hidden px-12 pb-8 md:block">
         <div className="pointer-events-auto absolute bottom-8 left-1/2 flex -translate-x-1/2 items-center gap-2.5">
           <button
             type="button"
@@ -281,6 +266,148 @@ export function SiteShell({ content }: { content: SiteContent }) {
           ))}
         </div>
       </footer>
+
+      {/* ───────────── Mobile chrome ───────────── */}
+      <div
+        className="pointer-events-none fixed inset-x-0 top-0 z-30 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] md:hidden"
+        style={{
+          opacity: isOpen ? 0 : 1,
+          transition: "opacity 500ms ease",
+          visibility: isOpen ? "hidden" : "visible",
+        }}
+      >
+        <header className={`plate-type pointer-events-auto ${rise}`}>
+          <button
+            type="button"
+            onClick={close}
+            className="text-ink block text-left text-[1.05rem] font-bold tracking-[0.32em]"
+          >
+            {content.brand.name}
+          </button>
+          <p className="text-ember/90 mt-1.5 text-[0.8rem] tracking-[0.24em]">{content.brand.role}</p>
+        </header>
+      </div>
+
+      <div
+        aria-hidden={isOpen}
+        className="pointer-events-none fixed inset-x-0 z-20 px-5 md:hidden"
+        style={{
+          bottom: "calc(5.75rem + env(safe-area-inset-bottom))",
+          opacity: isOpen ? 0 : 1,
+          transform: isOpen ? "translate3d(0, 12px, 0)" : "none",
+          transition: "opacity 500ms ease, transform 600ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+      >
+        <div className={`plate-type max-w-[28ch] ${rise}`} style={hydrated ? { animationDelay: "400ms" } : undefined}>
+          {content.hero.quote
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line, index) => (
+              <p key={index} className="text-ink text-[0.95rem] leading-[1.65] tracking-[0.03em]">
+                {line}
+              </p>
+            ))}
+          {content.hero.quote.trim() && (
+            <span aria-hidden className="bg-canvas/70 mt-3 block h-px w-5" />
+          )}
+          {content.hero.attribution && (
+            <p
+              className={`text-ember text-[0.68rem] tracking-[0.28em] ${
+                content.hero.quote.trim() ? "mt-2.5" : ""
+              }`}
+            >
+              {content.hero.attribution}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <nav
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-40 md:hidden"
+        style={{
+          paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+          opacity: isOpen ? 0 : 1,
+          transition: "opacity 400ms ease",
+          pointerEvents: isOpen ? "none" : "auto",
+        }}
+      >
+        <div className="from-void/90 via-void/55 pointer-events-none absolute inset-0 bg-gradient-to-t to-transparent" />
+        <ul className="relative flex items-stretch justify-between gap-1 px-3 pt-3">
+          {sections.map((section, index) => {
+            const isActive = section.id === activeId;
+            return (
+              <li key={section.id} className={`min-w-0 flex-1 ${rise}`} style={hydrated ? { animationDelay: `${280 + index * 80}ms` } : undefined}>
+                <button
+                  type="button"
+                  onClick={() => open(section.id)}
+                  aria-current={isActive ? "true" : undefined}
+                  className="pointer-events-auto flex min-h-11 w-full flex-col items-center justify-center gap-0.5 px-1 py-2 tracking-[0.18em]"
+                >
+                  <span className={`text-[0.65rem] font-bold ${isActive ? "text-canvas" : "text-canvas/80"}`}>
+                    {section.number}
+                  </span>
+                  <span className={`text-[0.72rem] font-semibold ${isActive ? "text-ink" : "text-ink/80"}`}>
+                    {section.label}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      {/* Mobile section sheet — full bleed, slides up. */}
+      <section
+        aria-hidden={!isOpen}
+        className="fixed inset-0 z-50 flex flex-col md:hidden"
+        style={{
+          opacity: isOpen ? 1 : 0,
+          pointerEvents: isOpen ? "auto" : "none",
+          transform: isOpen ? "none" : "translate3d(0, 2.5rem, 0)",
+          transition: "opacity 500ms ease, transform 650ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+      >
+        <div aria-hidden className="from-void via-void/92 absolute inset-0 bg-gradient-to-b to-void/80" />
+
+        {rendered && (
+          <article
+            key={`mob-${rendered.id}`}
+            className="relative flex min-h-0 flex-1 flex-col px-5 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+          >
+            <header className="flex shrink-0 items-start justify-between gap-4 pb-4">
+              <div>
+                <h1 className="text-[0.85rem] tracking-[0.3em]">
+                  <span className="text-canvas font-bold">{rendered.number}</span>{" "}
+                  <span className="text-ink font-semibold">{rendered.label}</span>
+                </h1>
+                <span aria-hidden className="bg-canvas/60 mt-2.5 block h-px w-7" />
+              </div>
+              <button
+                type="button"
+                onClick={close}
+                className="text-ink-dim hover:text-ink -mr-1 min-h-11 min-w-11 px-2 text-[0.7rem] tracking-[0.22em]"
+              >
+                close
+              </button>
+            </header>
+
+            <div className={`scroll-quiet ${rise} min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-6`}>
+              {rendered.portrait && (
+                <figure className="mb-6 w-[9.5rem] overflow-hidden rounded-md shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={rendered.portrait}
+                    alt=""
+                    className="aspect-[3/4] h-auto w-full object-cover object-[62%_16%]"
+                  />
+                </figure>
+              )}
+              <ScriptBody text={rendered.script} />
+            </div>
+          </article>
+        )}
+      </section>
     </>
   );
 }

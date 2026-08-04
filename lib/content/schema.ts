@@ -132,8 +132,8 @@ export const defaultContent: SiteContent = {
       number: "01",
       label: "acting",
       focus: { u: 0.24, v: 0.35 },
-      script: `- overcompensating | a24 / amazon | recurring
-- shoresy | crave/bell media | recurring
+      script: `- overcompensating | a24 / mgm | recurring
+- shoresy | crave / bell media | recurring
 - saint pierre | cbc | recurring
 
 - full cv on request | faith@element-artist.com

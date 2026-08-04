@@ -63,6 +63,14 @@
   background-color: rgba(201, 163, 90, 0.4);
 }
 
+/* Mobile sheet type — slightly tighter on small screens. */
+@media (max-width: 767px) {
+  .theme-v2 .plate-type,
+  .theme-v2 .plate-type :is(button, p, span, a) {
+    text-shadow: 0 1px 10px rgba(28, 35, 25, 0.7), 0 0 2px rgba(28, 35, 25, 0.85);
+  }
+}
+
 @layer base {
   html {
     background-color: var(--color-void);

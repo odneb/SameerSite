@@ -45,7 +45,7 @@ export function ScriptBody({ text }: { text: string }) {
   const blocks = parseScript(text);
 
   return (
-    <div className="text-[1.05rem] leading-[1.9] tracking-[0.015em] md:text-[1.1rem]">
+    <div className="max-w-full overflow-x-hidden text-[1.05rem] leading-[1.9] tracking-[0.015em] break-words md:text-[1.1rem]">
       {blocks.map((block, index) => {
         switch (block.kind) {
           case "scene":
@@ -58,12 +58,20 @@ export function ScriptBody({ text }: { text: string }) {
               </p>
             );
 
-          case "action":
+          case "action": {
+            // Closing asides (e.g. writing availability) sit apart from body copy.
+            const isAside = /pages available on request/i.test(block.text);
             return (
-              <p key={index} className="text-ink mb-3.5 max-w-[48ch] font-semibold">
+              <p
+                key={index}
+                className={`mb-3.5 max-w-[48ch] font-semibold ${
+                  isAside ? "text-ember/85 mt-2" : "text-ink"
+                }`}
+              >
                 {linkify(block.text)}
               </p>
             );
+          }
 
           case "character":
             return (
@@ -118,17 +126,17 @@ export function ScriptBody({ text }: { text: string }) {
             return (
               <div
                 key={index}
-                className="group/entry flex items-baseline gap-3 py-[0.4rem]"
+                className="grid grid-cols-1 gap-1 py-[0.45rem] sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,auto)] sm:items-baseline sm:gap-3"
               >
-                <span className="text-ink group-hover/entry:text-canvas shrink-0 font-bold tracking-[0.02em] transition-colors duration-500">
+                <span className="text-ink min-w-0 font-bold tracking-[0.02em]">
                   {linkify(block.text)}
                 </span>
                 <span
                   aria-hidden
-                  className="border-sage/45 min-w-6 flex-1 -translate-y-[0.3em] border-b border-dotted"
+                  className="border-sage/45 hidden min-w-0 -translate-y-[0.3em] border-b border-dotted sm:block"
                 />
                 {block.note && (
-                  <span className="text-ink-dim shrink-0 text-[0.9rem] tracking-[0.01em]">
+                  <span className="text-ink/75 min-w-0 text-[0.9rem] leading-snug tracking-[0.01em] sm:text-right">
                     {linkify(block.note)}
                   </span>
                 )}
