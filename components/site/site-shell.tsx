@@ -288,13 +288,13 @@ export function SiteShell({ content }: { content: SiteContent }) {
         </header>
       </div>
 
-      {/* Quote locked into the person-shadow on the mirrored / zoomed mobile plate. */}
+      {/* Quote — mid plate, right band (pre-shadow nudge placement). */}
       <div
         aria-hidden={isOpen}
-        className="plate-type pointer-events-none absolute z-20 w-max max-w-[min(14.5rem,58vw)] text-right md:hidden"
+        className="plate-type pointer-events-none absolute z-20 w-max max-w-[16.5rem] text-left md:hidden"
         style={{
-          top: "34%",
-          right: "18%",
+          top: "42%",
+          right: "0.9rem",
           left: "auto",
           opacity: isOpen ? 0 : 1,
           transform: isOpen ? "translate3d(0, 12px, 0)" : "none",
@@ -307,17 +307,17 @@ export function SiteShell({ content }: { content: SiteContent }) {
             .map((line) => line.trim())
             .filter(Boolean)
             .map((line, index) => (
-              <p key={index} className="type-quote text-ink whitespace-nowrap leading-[1.5] tracking-[0.02em]">
+              <p key={index} className="type-quote text-ink whitespace-nowrap leading-[1.55] tracking-[0.03em]">
                 {line}
               </p>
             ))}
           {content.hero.quote.trim() && (
-            <span aria-hidden className="bg-canvas/70 mt-2.5 ml-auto block h-px w-5" />
+            <span aria-hidden className="bg-canvas/70 mt-3 ml-auto block h-px w-5" />
           )}
           {content.hero.attribution && (
             <p
-              className={`text-ember text-[0.74rem] tracking-[0.26em] ${
-                content.hero.quote.trim() ? "mt-2" : ""
+              className={`text-ember text-right text-[0.82rem] tracking-[0.28em] ${
+                content.hero.quote.trim() ? "mt-2.5" : ""
               }`}
             >
               {content.hero.attribution}
