@@ -2,7 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { hasValidSession } from "@/lib/auth/session";
-import { getDraftContent, hasUnpublishedChanges } from "@/lib/content/store";
+import { appendRevision, listRevisions } from "@/lib/content/revisions";
+import {
+  getDraftContent,
+  getPublishedContent,
+  hasUnpublishedChanges,
+} from "@/lib/content/store";
 
 import { logoutAction } from "../login/actions";
 import { AdminForm } from "./admin-form";
@@ -13,29 +18,42 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
+/** If the log is empty, snapshot the current live site as the starting point. */
+async function ensureBaselineRevision() {
+  const existing = await listRevisions();
+  if (existing.length > 0) return existing;
+  const published = await getPublishedContent();
+  await appendRevision({
+    kind: "publish",
+    content: published,
+    label: "Starting point",
+  });
+  return listRevisions();
+}
+
 export default async function AdminPage() {
   if (!(await hasValidSession())) redirect("/login");
 
-  const [content, unpublished] = await Promise.all([
+  const [content, unpublished, revisions] = await Promise.all([
     getDraftContent(),
     hasUnpublishedChanges(),
+    ensureBaselineRevision(),
   ]);
 
   return (
-    <main className="bg-void min-h-dvh overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-5 pt-10 pb-8 sm:px-10">
-        <header className="border-hairline flex flex-wrap items-start justify-between gap-6 border-b pb-8">
+    <main className="bg-void min-h-dvh">
+      <div className="mx-auto max-w-2xl px-5 pt-8 pb-28 sm:px-8">
+        <header className="border-hairline flex flex-wrap items-end justify-between gap-4 border-b pb-5">
           <div>
-            <h1 className="text-ink text-[1.6rem] font-semibold tracking-[0.04em]">
+            <h1 className="text-ink text-[1.15rem] font-semibold tracking-[0.06em]">
               Edit your website
             </h1>
-            <p className="text-ink-dim mt-3 max-w-[40ch] text-[1.05rem] leading-relaxed">
-              1) Choose what to edit &nbsp; 2) Change the words &nbsp; 3) Save &nbsp; 4)
-              Publish when you want it live
+            <p className="text-ink-dim mt-2 text-[0.82rem] leading-relaxed">
+              Choose what to edit → change it → Save → Publish when ready
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-5 text-[1rem]">
+          <div className="flex items-center gap-4 text-[0.8rem]">
             <Link
               href="/"
               className="text-ink-dim hover:text-ink underline-offset-4 transition-colors hover:underline"
@@ -53,18 +71,22 @@ export default async function AdminPage() {
           </div>
         </header>
 
-        <div className="mt-10">
-          <AdminForm content={content} unpublished={unpublished} />
+        <div className="mt-8">
+          <AdminForm
+            content={content}
+            unpublished={unpublished}
+            revisions={revisions}
+          />
         </div>
 
-        <details className="border-hairline mt-16 mb-8 rounded-xl border px-5 py-4">
-          <summary className="text-ink-dim cursor-pointer text-[1rem]">
-            Advanced: throw away unsaved draft and reload the live site
+        <details className="border-hairline mt-10 rounded-lg border px-4 py-3">
+          <summary className="text-ink-dim cursor-pointer text-[0.8rem]">
+            Advanced: discard draft
           </summary>
-          <form action={discardAction} className="mt-4">
+          <form action={discardAction} className="mt-3">
             <button
               type="submit"
-              className="text-ember text-[1rem] underline-offset-4 hover:underline"
+              className="text-ember text-[0.8rem] underline-offset-4 hover:underline"
             >
               Discard draft and reload live copy
             </button>

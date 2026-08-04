@@ -45,7 +45,7 @@ export function ScriptBody({ text }: { text: string }) {
   const blocks = parseScript(text);
 
   return (
-    <div className="max-w-full overflow-x-hidden text-[1.05rem] leading-[1.9] tracking-[0.015em] break-words md:text-[1.1rem]">
+    <div className="type-body max-w-full overflow-x-hidden leading-[1.9] tracking-[0.015em] break-words">
       {blocks.map((block, index) => {
         switch (block.kind) {
           case "scene":

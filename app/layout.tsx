@@ -39,7 +39,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className="h-full">
-      <body className="bg-void text-ink min-h-full overflow-hidden antialiased">
+      <body className="bg-void text-ink min-h-full overflow-x-hidden antialiased">
         {children}
       </body>
     </html>

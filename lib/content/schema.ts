@@ -5,6 +5,10 @@
  * dashboard can stay a handful of textareas rather than a rich text editor.
  */
 
+import { defaultTheme, sanitizeTheme, type SiteTheme } from "./theme";
+
+export type { SiteTheme };
+
 export type SiteContent = {
   meta: {
     title: string;
@@ -23,6 +27,8 @@ export type SiteContent = {
   footer: {
     copyright: string;
   };
+  /** Colours and type sizes for the live site. */
+  theme: SiteTheme;
 };
 
 export type Section = {
@@ -176,6 +182,7 @@ toronto, and wherever the work is.`,
   footer: {
     copyright: "© s.w. jafar   all rights reserved",
   },
+  theme: { ...defaultTheme },
 };
 
 /** Trim, cap and shape untrusted input from the dashboard. */
@@ -258,5 +265,6 @@ export function sanitizeContent(input: unknown): SiteContent {
         MAX_LENGTHS.short,
       ),
     },
+    theme: sanitizeTheme(source.theme ?? defaultTheme),
   };
 }

@@ -101,11 +101,11 @@ export function SiteShell({ content }: { content: SiteContent }) {
           <button
             type="button"
             onClick={close}
-            className="text-ink hover:text-canvas block text-left text-[1.45rem] font-bold tracking-[0.4em] transition-colors duration-500"
+            className="type-brand text-ink hover:text-canvas block text-left font-bold tracking-[0.4em] transition-colors duration-500"
           >
             {content.brand.name}
           </button>
-          <p className="text-ember/90 mt-2 text-[0.95rem] tracking-[0.28em]">{content.brand.role}</p>
+          <p className="type-role text-ember/90 mt-2 tracking-[0.28em]">{content.brand.role}</p>
         </header>
 
         <div aria-hidden className="border-canvas/55 my-5 w-10 border-t" />
@@ -128,7 +128,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
                     onFocus={() => previewFocus(section)}
                     onBlur={restoreFocus}
                     aria-current={isActive ? "true" : undefined}
-                    className="pointer-events-auto group inline-flex items-center justify-start gap-2.5 text-[0.88rem] tracking-[0.24em] transition-colors duration-500"
+                    className="type-nav pointer-events-auto group inline-flex items-center justify-start gap-2.5 tracking-[0.24em] transition-colors duration-500"
                   >
                     <span className="whitespace-nowrap">
                       <span className={isActive ? "text-ember font-bold" : "text-canvas/75"}>
@@ -171,7 +171,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
             .map((line) => line.trim())
             .filter(Boolean)
             .map((line, index) => (
-              <p key={index} className="text-ink text-[1.08rem] leading-[1.7] tracking-[0.04em]">
+              <p key={index} className="type-quote text-ink leading-[1.7] tracking-[0.04em]">
                 {line}
               </p>
             ))}
@@ -280,11 +280,11 @@ export function SiteShell({ content }: { content: SiteContent }) {
           <button
             type="button"
             onClick={close}
-            className="text-ink block text-left text-[1.45rem] font-bold tracking-[0.28em]"
+            className="type-brand text-ink block text-left font-bold tracking-[0.28em]"
           >
             {content.brand.name}
           </button>
-          <p className="text-ember/90 mt-1.5 text-[0.95rem] tracking-[0.22em]">{content.brand.role}</p>
+          <p className="type-role text-ember/90 mt-1.5 tracking-[0.22em]">{content.brand.role}</p>
         </header>
       </div>
 
@@ -307,7 +307,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
             .map((line) => line.trim())
             .filter(Boolean)
             .map((line, index) => (
-              <p key={index} className="text-ink whitespace-nowrap text-[0.82rem] leading-[1.5] tracking-[0.02em]">
+              <p key={index} className="type-quote text-ink whitespace-nowrap leading-[1.5] tracking-[0.02em]">
                 {line}
               </p>
             ))}
@@ -343,12 +343,12 @@ export function SiteShell({ content }: { content: SiteContent }) {
                   type="button"
                   onClick={() => (isActive ? close() : open(section.id))}
                   aria-current={isActive ? "true" : undefined}
-                  className="pointer-events-auto flex h-full w-full flex-col items-center justify-center gap-1 px-1 tracking-[0.16em]"
+                  className="type-nav pointer-events-auto flex h-full w-full flex-col items-center justify-center gap-1 px-1 tracking-[0.16em]"
                 >
-                  <span className={`text-[0.95rem] leading-none font-bold ${isActive ? "text-ember" : "text-canvas/85"}`}>
+                  <span className={`leading-none font-bold ${isActive ? "text-ember" : "text-canvas/85"}`}>
                     {section.number}
                   </span>
-                  <span className={`text-[1.02rem] leading-none font-semibold ${isActive ? "text-ember" : "text-ink/85"}`}>
+                  <span className={`leading-none font-semibold ${isActive ? "text-ember" : "text-ink/85"}`}>
                     {section.label}
                   </span>
                 </button>

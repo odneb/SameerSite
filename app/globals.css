@@ -32,6 +32,28 @@
   --color-canvas: #d63216;
   --color-sage: #6a765e;
   --color-hairline: rgba(208, 180, 128, 0.22);
+  --type-scale: 1;
+  --type-brand: 1.45rem;
+  --type-role: 0.95rem;
+  --type-quote: 0.9rem;
+  --type-nav: 1.02rem;
+  --type-body: 1.05rem;
+}
+
+.theme-v2 .type-brand {
+  font-size: calc(var(--type-brand) * var(--type-scale));
+}
+.theme-v2 .type-role {
+  font-size: calc(var(--type-role) * var(--type-scale));
+}
+.theme-v2 .type-quote {
+  font-size: calc(var(--type-quote) * var(--type-scale));
+}
+.theme-v2 .type-nav {
+  font-size: calc(var(--type-nav) * var(--type-scale));
+}
+.theme-v2 .type-body {
+  font-size: calc(var(--type-body) * var(--type-scale));
 }
 
 .theme-v2 .plate-type,

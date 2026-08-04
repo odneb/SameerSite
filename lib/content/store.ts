@@ -12,6 +12,7 @@
 
 import "server-only";
 
+import { appendRevision } from "./revisions";
 import { defaultContent, sanitizeContent, type SiteContent } from "./schema";
 
 const DRAFT_KEY = "content/draft.json";
@@ -97,11 +98,47 @@ export async function saveDraft(input: unknown): Promise<SiteContent> {
   return content;
 }
 
-/** Promote the current draft to live. */
+/** Promote the current draft to live and append an immutable revision. */
 export async function publishDraft(): Promise<SiteContent> {
   const draft = await getDraftContent();
   await write(PUBLISHED_KEY, draft);
+  const stamp = new Date().toLocaleString("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  await appendRevision({
+    kind: "publish",
+    content: draft,
+    label: `Published ${stamp}`,
+  });
   return draft;
+}
+
+/**
+ * Restore a past revision to draft + live site.
+ * Always appends a new revision entry — history is never deleted.
+ */
+export async function restoreRevision(id: string): Promise<SiteContent> {
+  const { getRevision } = await import("./revisions");
+  const revision = await getRevision(id);
+  if (!revision) throw new Error("revision not found");
+
+  const content = sanitizeContent(revision.content);
+  await write(DRAFT_KEY, content);
+  await write(PUBLISHED_KEY, content);
+
+  const stamp = new Date().toLocaleString("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  await appendRevision({
+    kind: "restore",
+    content,
+    restoredFromId: revision.id,
+    label: `Restored ${stamp} ← ${revision.label}`,
+  });
+
+  return content;
 }
 
 /** Throw away local edits and start again from what's live. */

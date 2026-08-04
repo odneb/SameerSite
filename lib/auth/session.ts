@@ -71,25 +71,45 @@ function clearFailures(key: string) {
   attempts.delete(key);
 }
 
-export async function attemptLogin(password: string, rateLimitKey: string) {
+/**
+ * Check the admin password without opening a new session.
+ * Used for sensitive actions like restoring a revision.
+ */
+export function verifyAdminPassword(
+  password: string,
+  rateLimitKey: string,
+):
+  | { ok: true }
+  | { ok: false; reason: "unconfigured" | "invalid" | "rate-limited"; retryInSeconds?: number } {
   const expected = process.env.ADMIN_PASSWORD;
-  if (!expected) return { ok: false as const, reason: "unconfigured" as const };
+  if (!expected) return { ok: false, reason: "unconfigured" };
 
   const limit = checkRateLimit(rateLimitKey);
   if (!limit.allowed) {
-    return {
-      ok: false as const,
-      reason: "rate-limited" as const,
-      retryInSeconds: limit.retryInSeconds,
-    };
+    return { ok: false, reason: "rate-limited", retryInSeconds: limit.retryInSeconds };
   }
 
   if (!password || !constantTimeEquals(password, expected)) {
     recordFailure(rateLimitKey);
-    return { ok: false as const, reason: "invalid" as const };
+    return { ok: false, reason: "invalid" };
   }
 
   clearFailures(rateLimitKey);
+  return { ok: true };
+}
+
+export async function attemptLogin(password: string, rateLimitKey: string) {
+  const check = verifyAdminPassword(password, rateLimitKey);
+  if (!check.ok) {
+    return check.reason === "rate-limited"
+      ? {
+          ok: false as const,
+          reason: "rate-limited" as const,
+          retryInSeconds: check.retryInSeconds,
+        }
+      : { ok: false as const, reason: check.reason };
+  }
+
   await createSession();
   return { ok: true as const };
 }

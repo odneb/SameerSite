@@ -1,14 +1,17 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { hasValidSession } from "@/lib/auth/session";
+import { hasValidSession, verifyAdminPassword } from "@/lib/auth/session";
 import { SECTION_LIMIT, type SiteContent } from "@/lib/content/schema";
+import { sanitizeTheme } from "@/lib/content/theme";
 import {
   discardDraft,
   getDraftContent,
   publishDraft,
+  restoreRevision,
   saveDraft,
 } from "@/lib/content/store";
 
@@ -16,6 +19,12 @@ import type { AdminState } from "./state";
 
 async function requireSession() {
   if (!(await hasValidSession())) redirect("/login");
+}
+
+async function rateLimitKey() {
+  const headerList = await headers();
+  const forwarded = headerList.get("x-forwarded-for");
+  return forwarded?.split(",")[0]?.trim() || headerList.get("x-real-ip") || "local";
 }
 
 /** Rebuild the content object from flat form fields. */
@@ -42,6 +51,21 @@ function contentFromFormData(formData: FormData, previous: SiteContent) {
     });
   }
 
+  const theme = sanitizeTheme({
+    void: value("theme.void"),
+    ink: value("theme.ink"),
+    inkDim: value("theme.inkDim"),
+    ember: value("theme.ember"),
+    canvas: value("theme.canvas"),
+    sage: value("theme.sage"),
+    scale: Number(value("theme.scale")),
+    brandSize: Number(value("theme.brandSize")),
+    roleSize: Number(value("theme.roleSize")),
+    quoteSize: Number(value("theme.quoteSize")),
+    navSize: Number(value("theme.navSize")),
+    bodySize: Number(value("theme.bodySize")),
+  });
+
   return {
     meta: { title: value("meta.title"), description: value("meta.description") },
     brand: {
@@ -52,6 +76,7 @@ function contentFromFormData(formData: FormData, previous: SiteContent) {
     hero: { quote: value("hero.quote"), attribution: value("hero.attribution") },
     sections,
     footer: { copyright: value("footer.copyright") },
+    theme,
   };
 }
 
@@ -76,6 +101,7 @@ export async function submitAction(
   }
 
   revalidatePath("/preview");
+  revalidatePath("/admin");
   if (publishing) revalidatePath("/");
 
   return {
@@ -93,4 +119,63 @@ export async function discardAction() {
   revalidatePath("/admin");
   revalidatePath("/preview");
   redirect("/admin");
+}
+
+export type RestoreState = {
+  status: "idle" | "ok" | "error";
+  message: string | null;
+  at: number;
+};
+
+export const initialRestoreState: RestoreState = {
+  status: "idle",
+  message: null,
+  at: 0,
+};
+
+/** Restore a past revision — requires the admin password again. */
+export async function restoreRevisionAction(
+  _previous: RestoreState,
+  formData: FormData,
+): Promise<RestoreState> {
+  await requireSession();
+
+  const id = String(formData.get("revisionId") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  const auth = verifyAdminPassword(password, await rateLimitKey());
+  if (!auth.ok) {
+    if (auth.reason === "rate-limited") {
+      return {
+        status: "error",
+        message: `Too many tries. Wait ${auth.retryInSeconds}s.`,
+        at: Date.now(),
+      };
+    }
+    return {
+      status: "error",
+      message: "Password incorrect. Nothing was changed.",
+      at: Date.now(),
+    };
+  }
+
+  try {
+    await restoreRevision(id);
+  } catch {
+    return {
+      status: "error",
+      message: "Could not restore that revision.",
+      at: Date.now(),
+    };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/preview");
+  revalidatePath("/admin");
+
+  return {
+    status: "ok",
+    message: "Restored. Live site updated. This restore was also saved in the log.",
+    at: Date.now(),
+  };
 }
