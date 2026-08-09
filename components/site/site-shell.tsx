@@ -6,7 +6,7 @@ import { useScene } from "@/components/scene/scene-context";
 import { ContactPortrait } from "@/components/site/contact-portrait";
 import { ScriptBody } from "@/components/site/script-body";
 import type { Section, SiteContent } from "@/lib/content/schema";
-import { bindEyeChord, isEyeChord } from "@/lib/easter/eye-spread";
+import { bindEyeChord, isEyeChord, resetEyePose } from "@/lib/easter/eye-spread";
 import { useHydrated } from "@/lib/hydrated";
 
 export function SiteShell({ content }: { content: SiteContent }) {
@@ -57,6 +57,12 @@ export function SiteShell({ content }: { content: SiteContent }) {
   useEffect(() => {
     bindEyeChord();
   }, []);
+
+  // Eye easter egg is session-only — snap back on refresh and when leaving the portrait page.
+  useEffect(() => {
+    const section = activeId ? sections.find((s) => s.id === activeId) : null;
+    if (!section?.portrait) resetEyePose();
+  }, [activeId, sections]);
 
   useEffect(() => {
     const held = new Set<string>();
@@ -260,7 +266,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
                   src={rendered.portrait}
                   variant="desktop"
                   className={`pointer-events-none absolute top-24 left-0 z-10 w-[17.5rem] -translate-x-[calc(100%+0.35rem)] overflow-hidden rounded-3xl ${rise}`}
-                  imgClassName="contrast-[0.97] saturate-[0.97]"
+                  imgClassName="aspect-[3/4] contrast-[0.97] saturate-[0.97]"
                 />
               )}
 
@@ -435,7 +441,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
               <button
                 type="button"
                 onClick={close}
-                className="text-ink-dim hover:text-ink -mr-1 min-h-11 min-w-11 px-2 text-[0.95rem] tracking-[0.2em]"
+                className="text-ink-dim hover:text-ink -mr-1 min-h-11 min-w-11 select-none px-2 text-[0.95rem] tracking-[0.2em]"
               >
                 close
               </button>

@@ -1,12 +1,8 @@
 /**
  * Easter egg: hold A+S+D, then arrows nudge the contact portrait's eyes.
  * ←/→ spread or pinch · ↑/↓ walk them up or down · hold both for diagonal.
- * Values persist for the browser (localStorage) after release.
+ * Session-only — resets on refresh and when leaving contact.
  */
-
-const STORAGE_KEY = "sameer-eye-pose";
-/** Legacy key from the spread-only version. */
-const LEGACY_KEY = "sameer-eye-spread";
 
 /** Per-frame step while an arrow is held (rAF ~60Hz). */
 const STEP_PER_FRAME = 0.012;
@@ -18,7 +14,9 @@ export type EyePose = {
   lift: number;
 };
 
-let pose: EyePose = { spread: 0, lift: 0 };
+const ZERO: EyePose = { spread: 0, lift: 0 };
+
+let pose: EyePose = ZERO;
 const listeners = new Set<() => void>();
 let chordBound = false;
 
@@ -39,20 +37,20 @@ function emit() {
   for (const listener of listeners) listener();
 }
 
-function persist() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pose));
-  } catch {
-    /* private mode */
-  }
-}
-
 export function setEyePose(next: Partial<EyePose>) {
   const spread = next.spread === undefined ? pose.spread : clampEyeAxis(next.spread);
   const lift = next.lift === undefined ? pose.lift : clampEyeAxis(next.lift);
   if (spread === pose.spread && lift === pose.lift) return;
-  pose = { spread, lift };
-  persist();
+  pose = spread === 0 && lift === 0 ? ZERO : { spread, lift };
+  emit();
+}
+
+export function resetEyePose() {
+  if (pose === ZERO || (pose.spread === 0 && pose.lift === 0)) {
+    pose = ZERO;
+    return;
+  }
+  pose = ZERO;
   emit();
 }
 
@@ -64,28 +62,15 @@ export function nudgeEyeLift(delta: number) {
   setEyePose({ lift: pose.lift + delta });
 }
 
+/** Clears any leftover keys from the old persisted version. */
 export function loadEyeSpread() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw != null) {
-      const parsed = JSON.parse(raw) as Partial<EyePose>;
-      pose = {
-        spread: clampEyeAxis(Number(parsed.spread) || 0),
-        lift: clampEyeAxis(Number(parsed.lift) || 0),
-      };
-      return;
-    }
-
-    const legacy = localStorage.getItem(LEGACY_KEY);
-    if (legacy == null) return;
-    const parsed = Number(legacy);
-    if (Number.isFinite(parsed)) {
-      pose = { spread: clampEyeAxis(parsed), lift: 0 };
-      persist();
-    }
+    localStorage.removeItem("sameer-eye-pose");
+    localStorage.removeItem("sameer-eye-spread");
   } catch {
     /* ignore */
   }
+  pose = ZERO;
 }
 
 export function subscribeEyeSpread(listener: () => void) {
@@ -149,12 +134,34 @@ export function bindEyeChord() {
     raf = requestAnimationFrame(tick);
   };
 
+  const typingInField = () => {
+    const el = document.activeElement;
+    if (!el || !(el instanceof HTMLElement)) return false;
+    const tag = el.tagName;
+    return (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "SELECT" ||
+      el.isContentEditable
+    );
+  };
+
   window.addEventListener(
     "keydown",
     (event) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (typingInField()) return;
+
       const key = normalize(event.key);
       if (key === "a" || key === "s" || key === "d") {
+        // Stop browser typeahead / sequential focus nav from stealing these keys
+        // (it was jumping the focus ring across acting / writing / contact).
+        event.preventDefault();
+        event.stopPropagation();
+        const focused = document.activeElement;
+        if (focused instanceof HTMLElement && focused !== document.body) {
+          focused.blur();
+        }
         heldLetters.add(key);
         ensureLoop();
         return;

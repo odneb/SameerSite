@@ -88,6 +88,14 @@
   background-color: rgba(201, 163, 90, 0.4);
 }
 
+/* Contact portrait easter egg — kill iOS long-press callout / text selection. */
+.eye-portrait-touch,
+.eye-portrait-touch * {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
 /* Mobile plate chrome — keep legible; heavy glow reads as blur on retina. */
 @media (max-width: 767px) {
   .theme-v2 .plate-type,
