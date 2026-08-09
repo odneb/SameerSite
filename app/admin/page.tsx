@@ -20,15 +20,20 @@ export const metadata = {
 
 /** If the log is empty, snapshot the current live site as the starting point. */
 async function ensureBaselineRevision() {
-  const existing = await listRevisions();
-  if (existing.length > 0) return existing;
-  const published = await getPublishedContent();
-  await appendRevision({
-    kind: "publish",
-    content: published,
-    label: "Starting point",
-  });
-  return listRevisions();
+  try {
+    const existing = await listRevisions();
+    if (existing.length > 0) return existing;
+    const published = await getPublishedContent();
+    await appendRevision({
+      kind: "publish",
+      content: published,
+      label: "Starting point",
+    });
+    return listRevisions();
+  } catch {
+    // Fresh Vercel deploys without Blob can't write .data/ — don't take down /admin.
+    return [];
+  }
 }
 
 export default async function AdminPage() {
