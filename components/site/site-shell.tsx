@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useScene } from "@/components/scene/scene-context";
+import { ContactPortrait } from "@/components/site/contact-portrait";
 import { ScriptBody } from "@/components/site/script-body";
 import type { Section, SiteContent } from "@/lib/content/schema";
+import { bindEyeChord, isEyeChord } from "@/lib/easter/eye-spread";
 import { useHydrated } from "@/lib/hydrated";
 
 export function SiteShell({ content }: { content: SiteContent }) {
@@ -53,11 +55,37 @@ export function SiteShell({ content }: { content: SiteContent }) {
   );
 
   useEffect(() => {
+    bindEyeChord();
+  }, []);
+
+  useEffect(() => {
+    const held = new Set<string>();
+    const track = (key: string, down: boolean) => {
+      const k = key.length === 1 ? key.toLowerCase() : key;
+      if (k !== "a" && k !== "s" && k !== "d") return;
+      if (down) held.add(k);
+      else held.delete(k);
+    };
+
     const onKeyDown = (event: KeyboardEvent) => {
+      track(event.key, true);
+
       if (event.key === "Escape") {
         close();
         return;
       }
+
+      // Capture-phase easter egg owns ←/→ while A+S+D is held.
+      if (
+        isEyeChord(held) &&
+        (event.key === "ArrowLeft" ||
+          event.key === "ArrowRight" ||
+          event.key === "ArrowUp" ||
+          event.key === "ArrowDown")
+      ) {
+        return;
+      }
+
       if (event.key === "ArrowDown" || event.key === "ArrowRight") {
         event.preventDefault();
         step(1);
@@ -74,8 +102,17 @@ export function SiteShell({ content }: { content: SiteContent }) {
       }
     };
 
+    const onKeyUp = (event: KeyboardEvent) => track(event.key, false);
+    const onBlur = () => held.clear();
+
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
   }, [close, open, sections, step]);
 
   useEffect(() => {
@@ -105,7 +142,9 @@ export function SiteShell({ content }: { content: SiteContent }) {
           >
             {content.brand.name}
           </button>
-          <p className="type-role text-ember/90 mt-2 tracking-[0.28em]">{content.brand.role}</p>
+          <p className="type-role text-ember mt-2 font-semibold tracking-[0.28em]">
+            {content.brand.role}
+          </p>
         </header>
 
         <div aria-hidden className="border-canvas/55 my-5 w-10 border-t" />
@@ -131,12 +170,20 @@ export function SiteShell({ content }: { content: SiteContent }) {
                     className="type-nav pointer-events-auto group inline-flex items-center justify-start gap-2.5 tracking-[0.24em] transition-colors duration-500"
                   >
                     <span className="whitespace-nowrap">
-                      <span className={isActive ? "text-ember font-bold" : "text-canvas/75"}>
+                      <span
+                        className={
+                          isActive
+                            ? "font-bold text-[#c44f3a]/60"
+                            : "font-semibold text-[#c44f3a]/60"
+                        }
+                      >
                         {section.number}
                       </span>{" "}
                       <span
                         className={
-                          isActive ? "text-ember font-semibold" : "text-ink/75 group-hover:text-ink"
+                          isActive
+                            ? "text-ember font-semibold"
+                            : "text-ink/70 font-medium group-hover:text-ink group-hover:font-bold"
                         }
                       >
                         {section.label}
@@ -209,22 +256,17 @@ export function SiteShell({ content }: { content: SiteContent }) {
           <article key={`desk-${rendered.id}`} className="relative w-full px-12 py-24">
             <div className="mb-8 flex items-start gap-8">
               {rendered.portrait && (
-                <figure
+                <ContactPortrait
+                  src={rendered.portrait}
+                  variant="desktop"
                   className={`pointer-events-none absolute top-24 left-0 z-10 w-[17.5rem] -translate-x-[calc(100%+0.35rem)] overflow-hidden rounded-3xl ${rise}`}
-                  style={hydrated ? { animationDelay: "160ms" } : undefined}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={rendered.portrait}
-                    alt=""
-                    className="aspect-[3/4] h-auto w-full object-cover object-[62%_16%] contrast-[0.97] saturate-[0.97]"
-                  />
-                </figure>
+                  imgClassName="contrast-[0.97] saturate-[0.97]"
+                />
               )}
 
               <div>
                 <h1 className="text-[0.9rem] tracking-[0.36em]">
-                  <span className="text-canvas font-bold">{rendered.number}</span>{" "}
+                  <span className="text-ember font-bold">{rendered.number}</span>{" "}
                   <span className="text-ink font-semibold">{rendered.label}</span>
                 </h1>
                 <span aria-hidden className="bg-canvas/60 mt-3 block h-px w-8" />
@@ -280,11 +322,13 @@ export function SiteShell({ content }: { content: SiteContent }) {
           <button
             type="button"
             onClick={close}
-            className="type-brand text-ink block text-left font-bold tracking-[0.28em]"
+            className="type-brand block text-left font-bold tracking-[0.28em] text-[#f2e6c8]"
           >
             {content.brand.name}
           </button>
-          <p className="type-role text-ember/90 mt-1.5 tracking-[0.22em]">{content.brand.role}</p>
+          <p className="type-role mt-1.5 font-semibold tracking-[0.22em] text-[#e0b86a]">
+            {content.brand.role}
+          </p>
         </header>
       </div>
 
@@ -307,7 +351,10 @@ export function SiteShell({ content }: { content: SiteContent }) {
             .map((line) => line.trim())
             .filter(Boolean)
             .map((line, index) => (
-              <p key={index} className="type-quote text-ink whitespace-nowrap leading-[1.55] tracking-[0.03em]">
+              <p
+                key={index}
+                className="type-quote whitespace-nowrap font-semibold leading-[1.55] tracking-[0.03em] text-[#f2e6c8]"
+              >
                 {line}
               </p>
             ))}
@@ -316,7 +363,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
           )}
           {content.hero.attribution && (
             <p
-              className={`text-ember text-right text-[0.82rem] tracking-[0.28em] ${
+              className={`text-ember text-right text-[0.82rem] font-semibold tracking-[0.28em] ${
                 content.hero.quote.trim() ? "mt-2.5" : ""
               }`}
             >
@@ -345,9 +392,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
                   aria-current={isActive ? "true" : undefined}
                   className="type-nav pointer-events-auto flex h-full w-full flex-col items-center justify-center gap-1 px-1 tracking-[0.16em]"
                 >
-                  <span className={`leading-none font-bold ${isActive ? "text-ember" : "text-canvas/85"}`}>
-                    {section.number}
-                  </span>
+                  <span className="leading-none font-bold text-[#c44f3a]/60">{section.number}</span>
                   <span className={`leading-none font-semibold ${isActive ? "text-ember" : "text-ink/85"}`}>
                     {section.label}
                   </span>
@@ -382,7 +427,7 @@ export function SiteShell({ content }: { content: SiteContent }) {
             <header className="flex shrink-0 items-start justify-between gap-4 pb-4">
               <div>
                 <h1 className="text-[0.85rem] tracking-[0.3em]">
-                  <span className="text-canvas font-bold">{rendered.number}</span>{" "}
+                  <span className="text-ember font-bold">{rendered.number}</span>{" "}
                   <span className="text-ink font-semibold">{rendered.label}</span>
                 </h1>
                 <span aria-hidden className="bg-canvas/60 mt-2.5 block h-px w-7" />
@@ -398,14 +443,12 @@ export function SiteShell({ content }: { content: SiteContent }) {
 
             <div className={`scroll-quiet ${rise} min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-6 pb-6`}>
               {rendered.portrait && (
-                <figure className="mb-8 w-full max-w-[48ch] overflow-hidden rounded-3xl">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={rendered.portrait}
-                    alt=""
-                    className="aspect-[16/10] h-auto w-full object-cover object-center contrast-[0.97] saturate-[0.97]"
-                  />
-                </figure>
+                <ContactPortrait
+                  src={rendered.portrait}
+                  variant="mobile"
+                  className="mb-8 w-full max-w-[48ch] overflow-hidden rounded-3xl"
+                  imgClassName="contrast-[0.97] saturate-[0.97]"
+                />
               )}
               <ScriptBody text={rendered.script} />
             </div>

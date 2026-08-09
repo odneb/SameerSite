@@ -58,15 +58,18 @@
 
 .theme-v2 .plate-type,
 .theme-v2 .plate-type :is(button, p, span, a) {
-  text-shadow: 0 1px 14px rgba(28, 35, 25, 0.65), 0 0 2px rgba(28, 35, 25, 0.8);
+  text-shadow:
+    0 1px 16px rgba(28, 35, 25, 0.78),
+    0 0 3px rgba(28, 35, 25, 0.9);
 }
 
 /* Type sitting on the red painting — cream over crimson. */
 .theme-v2 .nav-on-painting,
 .theme-v2 .nav-on-painting :is(button, span) {
   text-shadow:
-    0 1px 12px rgba(70, 20, 8, 0.7),
-    0 0 2px rgba(40, 10, 4, 0.85);
+    0 1px 14px rgba(40, 10, 4, 0.85),
+    0 0 3px rgba(20, 6, 2, 0.95),
+    0 0 18px rgba(28, 35, 25, 0.45);
 }
 
 .theme-v2 ::selection {
@@ -85,11 +88,20 @@
   background-color: rgba(201, 163, 90, 0.4);
 }
 
-/* Mobile sheet type — slightly tighter on small screens. */
+/* Mobile plate chrome — keep legible; heavy glow reads as blur on retina. */
 @media (max-width: 767px) {
   .theme-v2 .plate-type,
   .theme-v2 .plate-type :is(button, p, span, a) {
-    text-shadow: 0 1px 10px rgba(28, 35, 25, 0.7), 0 0 2px rgba(28, 35, 25, 0.85);
+    text-shadow: 0 1px 3px rgba(28, 35, 25, 0.75), 0 0 1px rgba(28, 35, 25, 0.9);
+  }
+
+  .theme-v2 .plate-type .type-brand,
+  .theme-v2 .plate-type .type-role {
+    text-shadow: 0 1px 2px rgba(28, 35, 25, 0.8);
+  }
+
+  .theme-v2 .plate-type .type-quote {
+    text-shadow: 0 1px 2px rgba(28, 35, 25, 0.7);
   }
 }
 

@@ -60,11 +60,11 @@ export function FilmGrade({ children }: FilmGradeProps) {
     if (!isMobile) return grade;
     return {
       ...grade,
-      softness: grade.softness * 0.35,
-      bloom: grade.bloom * 0.22,
-      bloomRadius: Math.max(2, grade.bloomRadius * 0.22),
-      // Retina phones shrink CSS-pixel CA — push past desktop so it still reads.
-      chromaticAberration: Math.max(1.1, grade.chromaticAberration * 1.6),
+      softness: grade.softness * 0.18,
+      bloom: grade.bloom * 0.11,
+      bloomRadius: Math.max(1.2, grade.bloomRadius * 0.12),
+      // Retina phones shrink CSS-pixel CA — keep it readable without mushing type.
+      chromaticAberration: Math.max(0.95, grade.chromaticAberration * 1.35),
     };
   }, [grade, isMobile]);
 

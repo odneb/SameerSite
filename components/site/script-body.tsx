@@ -139,7 +139,7 @@ export function ScriptBody({ text }: { text: string }) {
                   className="border-sage/45 hidden min-w-0 -translate-y-[0.3em] border-b border-dotted sm:block"
                 />
                 {block.note && (
-                  <span className="text-ink/75 min-w-0 text-[0.9rem] leading-snug tracking-[0.01em] sm:text-right">
+                  <span className="min-w-0 text-[0.9rem] font-medium leading-snug tracking-[0.01em] text-[#f0e4c4] sm:text-right">
                     {linkify(block.note)}
                   </span>
                 )}
